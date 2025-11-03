@@ -10,7 +10,7 @@ class RoutingResult {
   final List<LatLng> stitchedPath;
   final List<LatLng> googlePath;
   final bool usedFallback;
-  final Map<String, dynamic> debugInfo; // Added for debugging
+  final Map<String, dynamic> debugInfo;
 
   RoutingResult({
     required this.polylines,
@@ -27,6 +27,26 @@ class RouteNotFoundException implements Exception {
   
   @override
   String toString() => 'RouteNotFoundException: $message';
+}
+
+class RouteSegment {
+  final String slug;
+  final int partIndex;
+  final List<LatLng> points;
+  final double distanceToStart;
+  final double distanceToEnd;
+  final LatLng closestPointToStart;
+  final LatLng closestPointToEnd;
+
+  RouteSegment({
+    required this.slug,
+    required this.partIndex,
+    required this.points,
+    required this.distanceToStart,
+    required this.distanceToEnd,
+    required this.closestPointToStart,
+    required this.closestPointToEnd,
+  });
 }
 
 class RoutingService {
@@ -50,7 +70,6 @@ class RoutingService {
     
     if (_routeIndexCache != null) {
       debugPrint('✅ Cache hit - returning ${_routeIndexCache!.length} cached routes');
-      debugPrint('   Routes: $_routeIndexCache');
       return _routeIndexCache!;
     }
     
@@ -83,10 +102,7 @@ class RoutingService {
       final data = json.decode(res.body) as List<dynamic>;
       _routeIndexCache = data.map((e) => e.toString()).toList();
       
-      debugPrint('✅ Loaded ${_routeIndexCache!.length} routes:');
-      for (int i = 0; i < _routeIndexCache!.length; i++) {
-        debugPrint('   [$i] ${_routeIndexCache![i]}');
-      }
+      debugPrint('✅ Loaded ${_routeIndexCache!.length} routes');
       
       return _routeIndexCache!;
     } catch (e, st) {
@@ -97,76 +113,49 @@ class RoutingService {
   }
 
   static Future<List<List<LatLng>>> loadRouteLines(String slug) async {
-    debugPrint('');
-    debugPrint('───────────────────────────────────────────');
-    debugPrint('📥 LOADING ROUTE: $slug');
-    debugPrint('───────────────────────────────────────────');
+    debugPrint('📥 Loading route: $slug');
     
     if (_routeCache.containsKey(slug)) {
-      debugPrint('✅ Cache hit for $slug (${_routeCache[slug]!.length} parts)');
+      debugPrint('   ✅ Cache hit');
       return _routeCache[slug]!;
     }
 
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final bucket = dotenv.env['SUPABASE_BUCKET'] ?? 'Jroute';
     
-    debugPrint('🔧 Config:');
-    debugPrint('   SUPABASE_URL: ${supabaseUrl.isEmpty ? "❌ EMPTY" : supabaseUrl}');
-    debugPrint('   BUCKET: $bucket');
-    
     if (supabaseUrl.isEmpty) {
-      debugPrint('❌ Missing SUPABASE_URL');
+      debugPrint('   ❌ Missing SUPABASE_URL');
       return [];
     }
 
     try {
       final filePath = 'routes/$slug.geojson';
       final url = Uri.parse('$supabaseUrl/storage/v1/object/public/$bucket/$filePath');
-      debugPrint('🌐 Fetching GeoJSON: $url');
 
       final res = await http.get(url);
-      debugPrint('📡 Response status: ${res.statusCode}');
       
       if (res.statusCode != 200) {
-        debugPrint('❌ Failed to fetch $filePath (${res.statusCode})');
-        debugPrint('   Response: ${res.body.substring(0, math.min(200, res.body.length))}');
+        debugPrint('   ❌ Failed (${res.statusCode})');
         return [];
       }
 
-      debugPrint('✅ Parsing GeoJSON...');
       final data = json.decode(res.body);
       
       if (data is! Map<String, dynamic>) {
-        debugPrint('❌ Invalid JSON structure for $slug');
+        debugPrint('   ❌ Invalid JSON structure');
         return [];
       }
 
       final features = (data['features'] as List<dynamic>?) ?? [];
-      debugPrint('📊 Found ${features.length} features');
-      
-      if (features.isEmpty) {
-        debugPrint('⚠️ No features found in $slug');
-      }
-
       final parts = <List<LatLng>>[];
-      for (int i = 0; i < features.length; i++) {
-        final f = features[i];
-        debugPrint('   Processing feature [$i]...');
-        
+      
+      for (final f in features) {
         final geometry = (f as Map<String, dynamic>)['geometry'] as Map<String, dynamic>?;
-        if (geometry == null) {
-          debugPrint('      ⚠️ No geometry');
-          continue;
-        }
+        if (geometry == null) continue;
 
         final type = (geometry['type'] as String?) ?? '';
-        debugPrint('      Type: $type');
-        
         final coords = geometry['coordinates'];
-        if (coords == null) {
-          debugPrint('      ⚠️ No coordinates');
-          continue;
-        }
+        if (coords == null) continue;
 
         List<List<dynamic>> lineGroups = [];
 
@@ -174,51 +163,36 @@ class RoutingService {
           lineGroups = [coords as List<dynamic>];
         } else if (type == 'MultiLineString') {
           lineGroups = (coords as List<dynamic>).cast<List<dynamic>>();
-        } else {
-          debugPrint('      ⚠️ Unsupported type: $type');
         }
 
-        debugPrint('      Line groups: ${lineGroups.length}');
-
-        for (int j = 0; j < lineGroups.length; j++) {
-          final line = lineGroups[j];
+        for (final line in lineGroups) {
           final pts = line.map((p) {
             final a = p as List<dynamic>;
             return LatLng((a[1] as num).toDouble(), (a[0] as num).toDouble());
           }).toList();
 
-          if (pts.isNotEmpty) {
-            parts.add(pts);
-            debugPrint('      ✅ Added part with ${pts.length} points');
-          }
+          if (pts.isNotEmpty) parts.add(pts);
         }
       }
 
-      debugPrint('✅ Loaded ${parts.length} parts for $slug');
+      debugPrint('   ✅ Loaded ${parts.length} parts');
       _routeCache[slug] = parts;
       return parts;
-    } catch (e, st) {
-      debugPrint('❌ loadRouteLines EXCEPTION for $slug: $e');
-      debugPrint('   Stack trace: $st');
+    } catch (e) {
+      debugPrint('   ❌ Exception: $e');
       return [];
     }
   }
 
   static Future<List<LatLng>> fetchGoogleDirections(LatLng start, LatLng dest) async {
-    debugPrint('');
-    debugPrint('═══════════════════════════════════════════');
-    debugPrint('🗺️  FETCHING GOOGLE DIRECTIONS');
-    debugPrint('═══════════════════════════════════════════');
-    debugPrint('📍 From: ${start.latitude}, ${start.longitude}');
-    debugPrint('📍 To: ${dest.latitude}, ${dest.longitude}');
+    debugPrint('🗺️  Fetching Google Directions');
+    debugPrint('   From: ${start.latitude}, ${start.longitude}');
+    debugPrint('   To: ${dest.latitude}, ${dest.longitude}');
     
     final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
     if (apiKey.isEmpty) {
-      debugPrint('❌ Google Maps API key not configured');
       throw RouteNotFoundException('Google Maps API key not configured');
     }
-    
-    debugPrint('✅ API Key present: ${apiKey.substring(0, 10)}...');
 
     final origin = '${start.latitude},${start.longitude}';
     final destination = '${dest.latitude},${dest.longitude}';
@@ -232,30 +206,20 @@ class RoutingService {
     );
 
     try {
-      debugPrint('🌐 Making request...');
       final res = await http.get(url);
-      debugPrint('📡 Response status: ${res.statusCode}');
       
       if (res.statusCode != 200) {
-        debugPrint('❌ Request failed');
         throw RouteNotFoundException('Directions API request failed');
       }
 
       final data = json.decode(res.body) as Map<String, dynamic>;
       final status = data['status'] as String?;
-      debugPrint('📊 API Status: $status');
       
       if (status != 'OK') {
-        debugPrint('❌ API Error: $status');
-        if (data.containsKey('error_message')) {
-          debugPrint('   Error message: ${data['error_message']}');
-        }
         throw RouteNotFoundException('Directions API error: $status');
       }
 
       final routes = data['routes'] as List<dynamic>?;
-      debugPrint('✅ Found ${routes?.length ?? 0} route(s)');
-      
       if (routes == null || routes.isEmpty) {
         throw RouteNotFoundException('No routes found by Google');
       }
@@ -269,12 +233,10 @@ class RoutingService {
       }
 
       final decoded = _decodePolyline(encodedPoints);
-      debugPrint('✅ Decoded ${decoded.length} points from Google route');
+      debugPrint('   ✅ Decoded ${decoded.length} points');
       
       return decoded;
-    } catch (e, st) {
-      debugPrint('❌ fetchGoogleDirections EXCEPTION: $e');
-      debugPrint('   Stack trace: $st');
+    } catch (e) {
       if (e is RouteNotFoundException) rethrow;
       throw RouteNotFoundException('Failed to fetch Google directions: $e');
     }
@@ -348,151 +310,101 @@ class RoutingService {
     return {'point': point, 't': tt};
   }
 
-  static double calculateOverlap(
-    List<LatLng> routePart,
-    List<LatLng> googlePath,
-    {double thresholdMeters = 50.0}
-  ) {
-    if (routePart.isEmpty || googlePath.isEmpty) return 0.0;
+  static Map<String, dynamic> findClosestPointOnRoute(LatLng point, List<LatLng> route) {
+    double minDist = double.infinity;
+    LatLng? closestPoint;
+    int? segmentIndex;
 
-    int overlappingSegments = 0;
-    int totalSegments = routePart.length - 1;
-    if (totalSegments <= 0) return 0.0;
+    for (int i = 0; i < route.length - 1; i++) {
+      final result = closestPointOnSegment(point, route[i], route[i + 1]);
+      final projPoint = result['point'] as LatLng;
+      final dist = distanceMeters(point, projPoint);
 
-    for (int i = 0; i < routePart.length - 1; i++) {
-      final rp1 = routePart[i];
-      final rp2 = routePart[i + 1];
-      final midpoint = LatLng(
-        (rp1.latitude + rp2.latitude) / 2,
-        (rp1.longitude + rp2.longitude) / 2,
-      );
-
-      bool isClose = false;
-      for (int j = 0; j < googlePath.length - 1; j++) {
-        final gp1 = googlePath[j];
-        final gp2 = googlePath[j + 1];
-        final proj = closestPointOnSegment(midpoint, gp1, gp2);
-        final projPoint = proj['point'] as LatLng;
-        final dist = distanceMeters(midpoint, projPoint);
-        
-        if (dist <= thresholdMeters) {
-          isClose = true;
-          break;
-        }
+      if (dist < minDist) {
+        minDist = dist;
+        closestPoint = projPoint;
+        segmentIndex = i;
       }
-      
-      if (isClose) overlappingSegments++;
     }
 
-    return overlappingSegments / totalSegments;
+    return {
+      'point': closestPoint ?? route.first,
+      'distance': minDist,
+      'segmentIndex': segmentIndex ?? 0,
+    };
   }
 
-  static Future<List<Map<String, dynamic>>> findBestOverlappingRoutes(
-    List<LatLng> googlePath,
-    {double minOverlap = 0.3, double thresholdMeters = 50.0}
-  ) async {
+  static bool routesIntersect(List<LatLng> route1, List<LatLng> route2, {double thresholdMeters = 100.0}) {
+    for (int i = 0; i < route1.length - 1; i++) {
+      for (int j = 0; j < route2.length - 1; j++) {
+        final r1p1 = route1[i];
+        final r1p2 = route1[i + 1];
+        final r2p1 = route2[j];
+        final r2p2 = route2[j + 1];
+
+        // Check if segments are close enough
+        final proj1 = closestPointOnSegment(r1p1, r2p1, r2p2);
+        final proj2 = closestPointOnSegment(r2p1, r1p1, r1p2);
+        
+        final dist1 = distanceMeters(r1p1, proj1['point'] as LatLng);
+        final dist2 = distanceMeters(r2p1, proj2['point'] as LatLng);
+
+        if (dist1 <= thresholdMeters || dist2 <= thresholdMeters) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  static double calculateRouteGap(List<LatLng> route1, List<LatLng> route2) {
+    double minGap = double.infinity;
+
+    // Check distance between endpoints
+    final r1End = route1.last;
+    final r2Start = route2.first;
+    final r1Start = route1.first;
+    final r2End = route2.last;
+
+    minGap = math.min(minGap, distanceMeters(r1End, r2Start));
+    minGap = math.min(minGap, distanceMeters(r1Start, r2End));
+    minGap = math.min(minGap, distanceMeters(r1End, r2End));
+    minGap = math.min(minGap, distanceMeters(r1Start, r2Start));
+
+    return minGap;
+  }
+
+  static Future<List<RouteSegment>> findAllRouteSegments(LatLng start, LatLng dest) async {
     debugPrint('');
     debugPrint('═══════════════════════════════════════════');
-    debugPrint('🔍 FINDING OVERLAPPING ROUTES');
+    debugPrint('🔍 FINDING ROUTE SEGMENTS');
     debugPrint('═══════════════════════════════════════════');
-    debugPrint('⚙️  Parameters:');
-    debugPrint('   Google path points: ${googlePath.length}');
-    debugPrint('   Min overlap: ${(minOverlap * 100).toStringAsFixed(1)}%');
-    debugPrint('   Threshold: ${thresholdMeters}m');
     
     final slugs = await fetchRouteIndex();
-    debugPrint('');
-    debugPrint('📋 Checking ${slugs.length} routes from index');
-    
-    if (slugs.isEmpty) {
-      debugPrint('❌ No routes in index - cannot find overlaps');
-      return [];
-    }
-    
-    final candidates = <Map<String, dynamic>>[];
+    final segments = <RouteSegment>[];
 
-    for (int idx = 0; idx < slugs.length; idx++) {
-      final slug = slugs[idx];
-      debugPrint('');
-      debugPrint('🔄 [$idx/${slugs.length}] Checking route: $slug');
-      
+    for (final slug in slugs) {
       final parts = await loadRouteLines(slug);
-      debugPrint('   Found ${parts.length} part(s) in $slug');
       
       for (int partIndex = 0; partIndex < parts.length; partIndex++) {
         final part = parts[partIndex];
-        debugPrint('   Analyzing part $partIndex (${part.length} points)...');
         
-        final overlap = calculateOverlap(part, googlePath, thresholdMeters: thresholdMeters);
-        debugPrint('   Overlap: ${(overlap * 100).toStringAsFixed(1)}% (threshold: ${(minOverlap * 100).toStringAsFixed(1)}%)');
+        final startResult = findClosestPointOnRoute(start, part);
+        final endResult = findClosestPointOnRoute(dest, part);
         
-        if (overlap >= minOverlap) {
-          debugPrint('   ✅ MATCH! Adding to candidates');
-          candidates.add({
-            'slug': slug,
-            'partIndex': partIndex,
-            'part': part,
-            'overlap': overlap,
-          });
-        } else {
-          debugPrint('   ❌ Below threshold');
-        }
+        segments.add(RouteSegment(
+          slug: slug,
+          partIndex: partIndex,
+          points: part,
+          distanceToStart: startResult['distance'] as double,
+          distanceToEnd: endResult['distance'] as double,
+          closestPointToStart: startResult['point'] as LatLng,
+          closestPointToEnd: endResult['point'] as LatLng,
+        ));
       }
     }
 
-    candidates.sort((a, b) => (b['overlap'] as double).compareTo(a['overlap'] as double));
-    
-    debugPrint('');
-    debugPrint('═══════════════════════════════════════════');
-    debugPrint('📊 OVERLAP RESULTS');
-    debugPrint('═══════════════════════════════════════════');
-    debugPrint('✅ Found ${candidates.length} matching route(s)');
-    
-    for (int i = 0; i < candidates.length; i++) {
-      final c = candidates[i];
-      debugPrint('   [$i] ${c['slug']} (part ${c['partIndex']}) - ${((c['overlap'] as double) * 100).toStringAsFixed(1)}% overlap');
-    }
-    
-    return candidates;
-  }
-
-  static List<LatLng> trimRouteToOverlap(
-    List<LatLng> routePart,
-    List<LatLng> googlePath,
-    {double thresholdMeters = 50.0}
-  ) {
-    if (routePart.isEmpty) return [];
-
-    int? firstIndex;
-    int? lastIndex;
-
-    for (int i = 0; i < routePart.length; i++) {
-      final point = routePart[i];
-      
-      bool isClose = false;
-      for (int j = 0; j < googlePath.length - 1; j++) {
-        final gp1 = googlePath[j];
-        final gp2 = googlePath[j + 1];
-        final proj = closestPointOnSegment(point, gp1, gp2);
-        final projPoint = proj['point'] as LatLng;
-        final dist = distanceMeters(point, projPoint);
-        
-        if (dist <= thresholdMeters) {
-          isClose = true;
-          break;
-        }
-      }
-      
-      if (isClose) {
-        firstIndex ??= i;
-        lastIndex = i;
-      }
-    }
-
-    if (firstIndex == null || lastIndex == null) return [];
-    final trimmed = routePart.sublist(firstIndex, lastIndex + 1);
-    debugPrint('      Trimmed: ${routePart.length} → ${trimmed.length} points');
-    return trimmed;
+    return segments;
   }
 
   static Future<RoutingResult> buildRoute(LatLng start, LatLng dest, {List<String>? slugs}) async {
@@ -514,159 +426,262 @@ class RoutingService {
       debugInfo['googlePathLength'] = googlePath.length;
       
       if (googlePath.isEmpty) {
-        debugPrint('❌ Google returned empty route');
         throw RouteNotFoundException('Google returned empty route');
       }
 
-      final overlapThreshold = double.tryParse(dotenv.env['ROUTE_OVERLAP_THRESHOLD'] ?? '') ?? 500.0;
-      final minOverlap = double.tryParse(dotenv.env['ROUTE_MIN_OVERLAP'] ?? '') ?? 0.3;
+      // Find all route segments and their distances
+      final segments = await findAllRouteSegments(start, dest);
       
-      debugPrint('');
-      debugPrint('⚙️  Configuration:');
-      debugPrint('   ROUTE_OVERLAP_THRESHOLD: ${overlapThreshold}m');
-      debugPrint('   ROUTE_MIN_OVERLAP: ${(minOverlap * 100).toStringAsFixed(1)}%');
-      
-      debugInfo['overlapThreshold'] = overlapThreshold;
-      debugInfo['minOverlap'] = minOverlap;
-      
-      final overlappingRoutes = await findBestOverlappingRoutes(
-        googlePath,
-        minOverlap: minOverlap,
-        thresholdMeters: overlapThreshold,
-      );
-      
-      debugInfo['candidatesFound'] = overlappingRoutes.length;
-
-      if (overlappingRoutes.isEmpty) {
-        debugPrint('');
-        debugPrint('⚠️  NO OVERLAPPING ROUTES FOUND');
-        debugPrint('   Falling back to Google route only');
-        
-        final googlePolyline = Polyline(
-          polylineId: const PolylineId('google_route'),
-          points: googlePath,
-          color: Colors.grey,
-          width: 5,
-        );
-        
-        debugInfo['outcome'] = 'fallback_google';
-        
-        return RoutingResult(
-          polylines: [googlePolyline],
-          stitchedPath: googlePath,
-          googlePath: googlePath,
-          usedFallback: true,
-          debugInfo: debugInfo,
-        );
+      if (segments.isEmpty) {
+        debugPrint('❌ No routes available');
+        throw RouteNotFoundException('No routes in index');
       }
 
-      debugPrint('');
-      debugPrint('🎨 Building polylines from matches...');
+      // Sort by closest to start
+      segments.sort((a, b) => a.distanceToStart.compareTo(b.distanceToStart));
       
-      final usedPolylines = <Polyline>[];
-      final stitchedPath = <LatLng>[];
-      int colorIdx = 0;
+      debugPrint('');
+      debugPrint('📊 Route Analysis:');
+      for (int i = 0; i < math.min(5, segments.length); i++) {
+        final s = segments[i];
+        debugPrint('   [$i] ${s.slug}-${s.partIndex}');
+        debugPrint('       Start: ${(s.distanceToStart / 1000).toStringAsFixed(2)}km');
+        debugPrint('       End: ${(s.distanceToEnd / 1000).toStringAsFixed(2)}km');
+      }
 
-      final usedRoutes = <String>{};
-      for (int i = 0; i < overlappingRoutes.length; i++) {
-        final routeInfo = overlappingRoutes[i];
-        final slug = routeInfo['slug'] as String;
-        final part = routeInfo['part'] as List<LatLng>;
-        final overlap = routeInfo['overlap'] as double;
-        
-        final routeKey = '$slug-${routeInfo['partIndex']}';
-        
-        debugPrint('   [$i] Processing $routeKey (${(overlap * 100).toStringAsFixed(1)}% overlap)');
-        
-        if (usedRoutes.contains(routeKey)) {
-          debugPrint('      ⚠️ Already used, skipping');
-          continue;
-        }
-        usedRoutes.add(routeKey);
+      const maxStartDistance = 1000.0; // 1km
+      const maxEndDistance = 1000.0; // 1km
+      const maxGap = 3000.0; // 3km
+      const intersectionThreshold = 100.0; // 100m
 
-        final trimmed = trimRouteToOverlap(part, googlePath, thresholdMeters: overlapThreshold);
-        
-        if (trimmed.isNotEmpty) {
-          final color = _colorPool[colorIdx % _colorPool.length];
-          colorIdx++;
+      // CASE 1: Single route close to both start and end
+      debugPrint('');
+      debugPrint('🔍 Case 1: Looking for single route...');
+      for (final segment in segments) {
+        if (segment.distanceToStart <= maxStartDistance && 
+            segment.distanceToEnd <= maxEndDistance) {
+          debugPrint('✅ Found single route: ${segment.slug}-${segment.partIndex}');
+          debugInfo['case'] = 'single_route';
+          debugInfo['routes'] = [segment.slug];
           
-          usedPolylines.add(Polyline(
-            polylineId: PolylineId(routeKey),
-            points: trimmed,
-            color: color,
+          return _buildSingleRouteResult(segment, googlePath, debugInfo);
+        }
+      }
+
+      // CASE 2: Two routes - one close to start, one close to end
+      debugPrint('🔍 Case 2: Looking for connecting routes...');
+      final startCandidates = segments
+          .where((s) => s.distanceToStart <= maxStartDistance)
+          .toList();
+      final endCandidates = segments
+          .where((s) => s.distanceToEnd <= maxEndDistance)
+          .toList();
+
+      debugPrint('   Start candidates: ${startCandidates.length}');
+      debugPrint('   End candidates: ${endCandidates.length}');
+
+      for (final startRoute in startCandidates) {
+        for (final endRoute in endCandidates) {
+          if (startRoute.slug == endRoute.slug && 
+              startRoute.partIndex == endRoute.partIndex) {
+            continue; // Same route, already checked in case 1
+          }
+
+          // Check if routes intersect
+          final intersects = routesIntersect(
+            startRoute.points, 
+            endRoute.points, 
+            thresholdMeters: intersectionThreshold
+          );
+
+          if (intersects) {
+            debugPrint('✅ Found intersecting routes:');
+            debugPrint('   ${startRoute.slug} → ${endRoute.slug}');
+            debugInfo['case'] = 'intersecting_routes';
+            debugInfo['routes'] = [startRoute.slug, endRoute.slug];
+            
+            return _buildTwoRouteResult(
+              startRoute, endRoute, googlePath, debugInfo, intersects: true
+            );
+          }
+
+          // Check gap between routes
+          final gap = calculateRouteGap(startRoute.points, endRoute.points);
+          if (gap <= maxGap) {
+            debugPrint('✅ Found close routes (gap: ${(gap / 1000).toStringAsFixed(2)}km):');
+            debugPrint('   ${startRoute.slug} → ${endRoute.slug}');
+            debugInfo['case'] = 'close_routes_with_walk';
+            debugInfo['routes'] = [startRoute.slug, endRoute.slug];
+            debugInfo['walkingDistance'] = gap;
+            
+            return _buildTwoRouteResult(
+              startRoute, endRoute, googlePath, debugInfo, gap: gap
+            );
+          }
+        }
+      }
+
+      // CASE 3: Find connecting route
+      debugPrint('🔍 Case 3: Looking for three-route connection...');
+      if (startCandidates.isNotEmpty && endCandidates.isNotEmpty) {
+        final startRoute = startCandidates.first;
+        final endRoute = endCandidates.first;
+
+        // Look for a route that connects the two
+        for (final connector in segments) {
+          if (connector.slug == startRoute.slug || connector.slug == endRoute.slug) {
+            continue;
+          }
+
+          final connectsStart = routesIntersect(
+            startRoute.points, 
+            connector.points, 
+            thresholdMeters: intersectionThreshold
+          );
+          final connectsEnd = routesIntersect(
+            connector.points, 
+            endRoute.points, 
+            thresholdMeters: intersectionThreshold
+          );
+
+          if (connectsStart && connectsEnd) {
+            debugPrint('✅ Found connecting route:');
+            debugPrint('   ${startRoute.slug} → ${connector.slug} → ${endRoute.slug}');
+            debugInfo['case'] = 'three_route_connection';
+            debugInfo['routes'] = [startRoute.slug, connector.slug, endRoute.slug];
+            
+            return _buildThreeRouteResult(
+              startRoute, connector, endRoute, googlePath, debugInfo
+            );
+          }
+        }
+      }
+
+      // FALLBACK: Use Google route
+      debugPrint('');
+      debugPrint('⚠️  No suitable route combination found');
+      debugPrint('   Falling back to Google route');
+      debugInfo['case'] = 'fallback';
+      
+      return RoutingResult(
+        polylines: [
+          Polyline(
+            polylineId: const PolylineId('google_fallback'),
+            points: googlePath,
+            color: Colors.grey,
             width: 5,
-          ));
-          
-          stitchedPath.addAll(trimmed);
-          debugPrint('      ✅ Added polyline (${trimmed.length} points, color: $color)');
-        } else {
-          debugPrint('      ⚠️ Empty after trimming, skipping');
-        }
-      }
+          )
+        ],
+        stitchedPath: googlePath,
+        googlePath: googlePath,
+        usedFallback: true,
+        debugInfo: debugInfo,
+      );
 
-      debugInfo['polylinesCreated'] = usedPolylines.length;
-      debugInfo['stitchedPathLength'] = stitchedPath.length;
-
-      if (usedPolylines.isNotEmpty) {
-        debugPrint('');
-        debugPrint('╔═══════════════════════════════════════════╗');
-        debugPrint('║     ✅ SUCCESS - USING CUSTOM ROUTES     ║');
-        debugPrint('╚═══════════════════════════════════════════╝');
-        debugPrint('Polylines: ${usedPolylines.length}');
-        debugPrint('Stitched path points: ${stitchedPath.length}');
-        
-        debugInfo['outcome'] = 'success_custom';
-        
-        return RoutingResult(
-          polylines: usedPolylines,
-          stitchedPath: stitchedPath,
-          googlePath: googlePath,
-          debugInfo: debugInfo,
-        );
-      } else {
-        debugPrint('');
-        debugPrint('⚠️  No usable polylines after trimming');
-        debugPrint('   Falling back to Google route');
-        
-        final googlePolyline = Polyline(
-          polylineId: const PolylineId('google_route'),
-          points: googlePath,
-          color: Colors.grey,
-          width: 5,
-        );
-        
-        debugInfo['outcome'] = 'fallback_after_trim';
-        
-        return RoutingResult(
-          polylines: [googlePolyline],
-          stitchedPath: googlePath,
-          googlePath: googlePath,
-          usedFallback: true,
-          debugInfo: debugInfo,
-        );
-      }
     } catch (e, st) {
       debugPrint('');
-      debugPrint('╔═══════════════════════════════════════════╗');
-      debugPrint('║     ❌ BUILD ROUTE FAILED                ║');
-      debugPrint('╚═══════════════════════════════════════════╝');
-      debugPrint('Error: $e');
-      debugPrint('Stack trace: $st');
-      
-      debugInfo['outcome'] = 'error';
-      debugInfo['error'] = e.toString();
+      debugPrint('❌ BUILD ROUTE FAILED: $e');
+      debugPrint('   Stack: $st');
       
       if (e is RouteNotFoundException) rethrow;
       throw RouteNotFoundException('Routing failed: $e');
     }
   }
 
+  static RoutingResult _buildSingleRouteResult(
+    RouteSegment segment,
+    List<LatLng> googlePath,
+    Map<String, dynamic> debugInfo,
+  ) {
+    final polyline = Polyline(
+      polylineId: PolylineId('${segment.slug}-${segment.partIndex}'),
+      points: segment.points,
+      color: _colorPool[0],
+      width: 5,
+    );
+
+    return RoutingResult(
+      polylines: [polyline],
+      stitchedPath: segment.points,
+      googlePath: googlePath,
+      debugInfo: debugInfo,
+    );
+  }
+
+  static RoutingResult _buildTwoRouteResult(
+    RouteSegment route1,
+    RouteSegment route2,
+    List<LatLng> googlePath,
+    Map<String, dynamic> debugInfo, {
+    bool intersects = false,
+    double? gap,
+  }) {
+    final polylines = [
+      Polyline(
+        polylineId: PolylineId('${route1.slug}-${route1.partIndex}'),
+        points: route1.points,
+        color: _colorPool[0],
+        width: 5,
+      ),
+      Polyline(
+        polylineId: PolylineId('${route2.slug}-${route2.partIndex}'),
+        points: route2.points,
+        color: _colorPool[1],
+        width: 5,
+      ),
+    ];
+
+    final stitchedPath = [...route1.points, ...route2.points];
+
+    return RoutingResult(
+      polylines: polylines,
+      stitchedPath: stitchedPath,
+      googlePath: googlePath,
+      debugInfo: debugInfo,
+    );
+  }
+
+  static RoutingResult _buildThreeRouteResult(
+    RouteSegment route1,
+    RouteSegment connector,
+    RouteSegment route2,
+    List<LatLng> googlePath,
+    Map<String, dynamic> debugInfo,
+  ) {
+    final polylines = [
+      Polyline(
+        polylineId: PolylineId('${route1.slug}-${route1.partIndex}'),
+        points: route1.points,
+        color: _colorPool[0],
+        width: 5,
+      ),
+      Polyline(
+        polylineId: PolylineId('${connector.slug}-${connector.partIndex}'),
+        points: connector.points,
+        color: _colorPool[1],
+        width: 5,
+      ),
+      Polyline(
+        polylineId: PolylineId('${route2.slug}-${route2.partIndex}'),
+        points: route2.points,
+        color: _colorPool[2],
+        width: 5,
+      ),
+    ];
+
+    final stitchedPath = [...route1.points, ...connector.points, ...route2.points];
+
+    return RoutingResult(
+      polylines: polylines,
+      stitchedPath: stitchedPath,
+      googlePath: googlePath,
+      debugInfo: debugInfo,
+    );
+  }
+
   static void clearCache() {
     debugPrint('🗑️  Clearing route cache');
-    debugPrint('   Routes in cache: ${_routeCache.length}');
-    debugPrint('   Index cached: ${_routeIndexCache != null}');
     _routeCache.clear();
     _routeIndexCache = null;
-    debugPrint('   ✅ Cache cleared');
   }
 }
