@@ -1,6 +1,8 @@
 # jroute
 
-A new Flutter project.
+A jeepney routing service based in davao city, specifically made for tourists and other non-natives.
+
+keep in mind, some of the routes are otudated since they are taken from non-credible source
 
 ## Getting Started
 
