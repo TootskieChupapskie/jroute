@@ -32,20 +32,26 @@ class RouteNotFoundException implements Exception {
 class RouteSegment {
   final String slug;
   final int partIndex;
-  final List<LatLng> points;
+  final List<LatLng> points; // Original full route
+  final List<LatLng> trimmedPoints; // Trimmed segment from start to end
   final double distanceToStart;
   final double distanceToEnd;
   final LatLng closestPointToStart;
   final LatLng closestPointToEnd;
+  final double segmentLength; // Length of the trimmed segment
+  final bool reachesDestination; // Whether this segment gets close enough to destination
 
   RouteSegment({
     required this.slug,
     required this.partIndex,
     required this.points,
+    required this.trimmedPoints,
     required this.distanceToStart,
     required this.distanceToEnd,
     required this.closestPointToStart,
     required this.closestPointToEnd,
+    required this.segmentLength,
+    required this.reachesDestination,
   });
 }
 
@@ -242,6 +248,69 @@ class RoutingService {
     }
   }
 
+  static Future<List<LatLng>> _fetchWalkingDirections(LatLng start, LatLng dest) async {
+    debugPrint('🚶 Fetching Walking Directions');
+    debugPrint('   From: ${start.latitude}, ${start.longitude}');
+    debugPrint('   To: ${dest.latitude}, ${dest.longitude}');
+    
+    final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
+    if (apiKey.isEmpty) {
+      debugPrint('   ⚠️  No API key, returning straight line');
+      return [start, dest];
+    }
+
+    final origin = '${start.latitude},${start.longitude}';
+    final destination = '${dest.latitude},${dest.longitude}';
+    
+    final url = Uri.parse(
+      'https://maps.googleapis.com/maps/api/directions/json'
+      '?origin=$origin'
+      '&destination=$destination'
+      '&mode=walking'
+      '&key=$apiKey'
+    );
+
+    try {
+      final res = await http.get(url);
+      
+      if (res.statusCode != 200) {
+        debugPrint('   ⚠️  API failed, returning straight line');
+        return [start, dest];
+      }
+
+      final data = json.decode(res.body) as Map<String, dynamic>;
+      final status = data['status'] as String?;
+      
+      if (status != 'OK') {
+        debugPrint('   ⚠️  Status: $status, returning straight line');
+        return [start, dest];
+      }
+
+      final routes = data['routes'] as List<dynamic>?;
+      if (routes == null || routes.isEmpty) {
+        debugPrint('   ⚠️  No routes, returning straight line');
+        return [start, dest];
+      }
+
+      final route = routes[0] as Map<String, dynamic>;
+      final overviewPolyline = route['overview_polyline'] as Map<String, dynamic>?;
+      final encodedPoints = overviewPolyline?['points'] as String?;
+      
+      if (encodedPoints == null || encodedPoints.isEmpty) {
+        debugPrint('   ⚠️  No polyline, returning straight line');
+        return [start, dest];
+      }
+
+      final decoded = _decodePolyline(encodedPoints);
+      debugPrint('   ✅ Walking path: ${decoded.length} points');
+      
+      return decoded;
+    } catch (e) {
+      debugPrint('   ⚠️  Exception: $e, returning straight line');
+      return [start, dest];
+    }
+  }
+
   static List<LatLng> _decodePolyline(String encoded) {
     final points = <LatLng>[];
     int index = 0;
@@ -314,16 +383,19 @@ class RoutingService {
     double minDist = double.infinity;
     LatLng? closestPoint;
     int? segmentIndex;
+    double? segmentT; // Position along the segment (0.0 to 1.0)
 
     for (int i = 0; i < route.length - 1; i++) {
       final result = closestPointOnSegment(point, route[i], route[i + 1]);
       final projPoint = result['point'] as LatLng;
+      final t = result['t'] as double;
       final dist = distanceMeters(point, projPoint);
 
       if (dist < minDist) {
         minDist = dist;
         closestPoint = projPoint;
         segmentIndex = i;
+        segmentT = t;
       }
     }
 
@@ -331,7 +403,71 @@ class RoutingService {
       'point': closestPoint ?? route.first,
       'distance': minDist,
       'segmentIndex': segmentIndex ?? 0,
+      'segmentT': segmentT ?? 0.0,
     };
+  }
+
+  /// Trim route between two points on the route
+  /// Returns the segment of the route from startInfo to endInfo
+  static List<LatLng> trimRouteBetweenPoints(
+    List<LatLng> route,
+    Map<String, dynamic> startInfo,
+    Map<String, dynamic> endInfo,
+  ) {
+    final startIdx = startInfo['segmentIndex'] as int;
+    final endIdx = endInfo['segmentIndex'] as int;
+    final startPoint = startInfo['point'] as LatLng;
+    final endPoint = endInfo['point'] as LatLng;
+
+    debugPrint('   🔪 Trimming route:');
+    debugPrint('      Route length: ${route.length} points');
+    debugPrint('      Start index: $startIdx, End index: $endIdx');
+    debugPrint('      Direction: ${startIdx > endIdx ? "BACKWARDS" : "FORWARDS"}');
+
+    // Determine if we need to reverse the route
+    if (startIdx > endIdx) {
+      // Going backwards - we need to reverse the entire extraction
+      final trimmed = <LatLng>[];
+      
+      // Add start point
+      trimmed.add(startPoint);
+      
+      // Add points from startIdx down to endIdx (going backwards)
+      for (int i = startIdx; i >= endIdx + 1; i--) {
+        if (i < route.length && i > 0) {
+          trimmed.add(route[i]);
+        }
+      }
+      
+      // Add end point
+      if (distanceMeters(trimmed.last, endPoint) > 1.0) {
+        trimmed.add(endPoint);
+      }
+      
+      debugPrint('      Trimmed (backwards): ${trimmed.length} points');
+      return trimmed;
+    }
+
+    // Going forwards
+    final trimmed = <LatLng>[];
+    
+    // Add start point
+    trimmed.add(startPoint);
+    
+    // Add all complete points between start and end segments
+    for (int i = startIdx + 1; i <= endIdx; i++) {
+      if (i < route.length) {
+        trimmed.add(route[i]);
+      }
+    }
+    
+    // Add end point if it's different from the last added point
+    if (distanceMeters(trimmed.last, endPoint) > 1.0) {
+      trimmed.add(endPoint);
+    }
+
+    debugPrint('      Trimmed (forwards): ${trimmed.length} points');
+    return trimmed;
   }
 
   static bool routesIntersect(List<LatLng> route1, List<LatLng> route2, {double thresholdMeters = 100.0}) {
@@ -355,6 +491,105 @@ class RoutingService {
       }
     }
     return false;
+  }
+
+  /// Find the intersection point between two routes
+  /// Returns Map with 'point', 'route1Index', 'route2Index'
+  static Map<String, dynamic>? findIntersectionPoint(
+    List<LatLng> route1, 
+    List<LatLng> route2, 
+    {double thresholdMeters = 100.0}
+  ) {
+    double minDist = double.infinity;
+    LatLng? intersectionPoint;
+    int? route1Idx;
+    int? route2Idx;
+
+    for (int i = 0; i < route1.length - 1; i++) {
+      for (int j = 0; j < route2.length - 1; j++) {
+        final r1p1 = route1[i];
+        final r1p2 = route1[i + 1];
+        final r2p1 = route2[j];
+        final r2p2 = route2[j + 1];
+
+        // Find closest points between the two segments
+        final proj1 = closestPointOnSegment(r1p1, r2p1, r2p2);
+        final proj2 = closestPointOnSegment(r2p1, r1p1, r1p2);
+        
+        final projPoint1 = proj1['point'] as LatLng;
+        final projPoint2 = proj2['point'] as LatLng;
+        
+        final dist1 = distanceMeters(r1p1, projPoint1);
+        final dist2 = distanceMeters(r2p1, projPoint2);
+
+        // Use the closest point as potential intersection
+        if (dist1 <= thresholdMeters && dist1 < minDist) {
+          minDist = dist1;
+          intersectionPoint = projPoint1;
+          route1Idx = i;
+          route2Idx = j;
+        }
+        
+        if (dist2 <= thresholdMeters && dist2 < minDist) {
+          minDist = dist2;
+          intersectionPoint = projPoint2;
+          route1Idx = i;
+          route2Idx = j;
+        }
+      }
+    }
+
+    if (intersectionPoint != null && route1Idx != null && route2Idx != null) {
+      return {
+        'point': intersectionPoint,
+        'route1Index': route1Idx,
+        'route2Index': route2Idx,
+        'distance': minDist,
+      };
+    }
+
+    return null;
+  }
+
+  /// Trim route from start to a specific index
+  static List<LatLng> trimRouteToIndex(List<LatLng> route, int endIndex, LatLng endPoint) {
+    final trimmed = <LatLng>[];
+    
+    for (int i = 0; i <= endIndex && i < route.length; i++) {
+      trimmed.add(route[i]);
+    }
+    
+    // Add the end point if it's different from last point
+    if (trimmed.isNotEmpty && distanceMeters(trimmed.last, endPoint) > 1.0) {
+      trimmed.add(endPoint);
+    }
+    
+    return trimmed;
+  }
+
+  /// Trim route from a specific index to end
+  static List<LatLng> trimRouteFromIndex(List<LatLng> route, int startIndex, LatLng startPoint) {
+    final trimmed = <LatLng>[startPoint];
+    
+    for (int i = startIndex + 1; i < route.length; i++) {
+      trimmed.add(route[i]);
+    }
+    
+    return trimmed;
+  }
+
+  /// Find connection point between two routes (endpoints)
+  static Map<String, dynamic>? findConnectionPoint(List<LatLng> route1, List<LatLng> route2) {
+    final r1End = route1.last;
+    final r2Start = route2.first;
+    
+    final gap = distanceMeters(r1End, r2Start);
+    
+    return {
+      'point1': r1End,
+      'point2': r2Start,
+      'distance': gap,
+    };
   }
 
   static double calculateRouteGap(List<LatLng> route1, List<LatLng> route2) {
@@ -382,6 +617,7 @@ class RoutingService {
     
     final slugs = await fetchRouteIndex();
     final segments = <RouteSegment>[];
+    const maxReachThreshold = 500.0; // 500m to consider "reaching" destination
 
     for (final slug in slugs) {
       final parts = await loadRouteLines(slug);
@@ -392,14 +628,32 @@ class RoutingService {
         final startResult = findClosestPointOnRoute(start, part);
         final endResult = findClosestPointOnRoute(dest, part);
         
+        final distToStart = startResult['distance'] as double;
+        final distToEnd = endResult['distance'] as double;
+        
+        // Trim the route to only the relevant segment
+        final trimmed = trimRouteBetweenPoints(part, startResult, endResult);
+        
+        // Calculate length of trimmed segment
+        double segmentLength = 0.0;
+        for (int i = 0; i < trimmed.length - 1; i++) {
+          segmentLength += distanceMeters(trimmed[i], trimmed[i + 1]);
+        }
+        
+        // Check if this route actually reaches the destination
+        final reachesDestination = distToEnd <= maxReachThreshold;
+        
         segments.add(RouteSegment(
           slug: slug,
           partIndex: partIndex,
           points: part,
-          distanceToStart: startResult['distance'] as double,
-          distanceToEnd: endResult['distance'] as double,
+          trimmedPoints: trimmed,
+          distanceToStart: distToStart,
+          distanceToEnd: distToEnd,
           closestPointToStart: startResult['point'] as LatLng,
           closestPointToEnd: endResult['point'] as LatLng,
+          segmentLength: segmentLength,
+          reachesDestination: reachesDestination,
         ));
       }
     }
@@ -437,49 +691,109 @@ class RoutingService {
         throw RouteNotFoundException('No routes in index');
       }
 
-      // Sort by closest to start
-      segments.sort((a, b) => a.distanceToStart.compareTo(b.distanceToStart));
+      // Sort by closest to start, but prioritize routes that reach destination
+      segments.sort((a, b) {
+        // First, prioritize routes that reach the destination
+        if (a.reachesDestination && !b.reachesDestination) return -1;
+        if (!a.reachesDestination && b.reachesDestination) return 1;
+        
+        // Then sort by distance to start
+        return a.distanceToStart.compareTo(b.distanceToStart);
+      });
       
       debugPrint('');
       debugPrint('📊 Route Analysis:');
-      for (int i = 0; i < math.min(5, segments.length); i++) {
+      for (int i = 0; i < math.min(10, segments.length); i++) {
         final s = segments[i];
         debugPrint('   [$i] ${s.slug}-${s.partIndex}');
         debugPrint('       Start: ${(s.distanceToStart / 1000).toStringAsFixed(2)}km');
         debugPrint('       End: ${(s.distanceToEnd / 1000).toStringAsFixed(2)}km');
+        debugPrint('       Length: ${(s.segmentLength / 1000).toStringAsFixed(2)}km');
+        debugPrint('       Reaches dest: ${s.reachesDestination ? "✅" : "❌"}');
       }
 
       const maxStartDistance = 1000.0; // 1km
-      const maxEndDistance = 1000.0; // 1km
-      const maxGap = 3000.0; // 3km
+      const maxWalkingDistance = 500.0; // 500m walking distance to destination
       const intersectionThreshold = 100.0; // 100m
 
-      // CASE 1: Single route close to both start and end
+      // CASE 1A: Single route that reaches destination perfectly
       debugPrint('');
-      debugPrint('🔍 Case 1: Looking for single route...');
+      debugPrint('🔍 Case 1A: Looking for single route that reaches destination...');
       for (final segment in segments) {
         if (segment.distanceToStart <= maxStartDistance && 
-            segment.distanceToEnd <= maxEndDistance) {
+            segment.reachesDestination) {
           debugPrint('✅ Found single route: ${segment.slug}-${segment.partIndex}');
-          debugInfo['case'] = 'single_route';
+          debugPrint('   Segment length: ${(segment.segmentLength / 1000).toStringAsFixed(2)}km');
+          
+          // Even if it "reaches" destination, check if there's a small gap
+          if (segment.distanceToEnd > 10.0) { // More than 10m gap
+            debugPrint('   Small gap to destination: ${segment.distanceToEnd.toStringAsFixed(0)}m');
+            debugPrint('   Adding walking path to exact destination');
+            
+            final walkingPath = await _fetchWalkingDirections(
+              segment.closestPointToEnd,
+              dest
+            );
+            
+            debugInfo['case'] = 'single_route_with_walking';
+            debugInfo['routes'] = [segment.slug];
+            debugInfo['walkingDistance'] = segment.distanceToEnd;
+            
+            return _buildSingleRouteResult(segment, walkingPath, googlePath, debugInfo);
+          }
+          
+          debugInfo['case'] = 'single_route_complete';
           debugInfo['routes'] = [segment.slug];
           
-          return _buildSingleRouteResult(segment, googlePath, debugInfo);
+          return _buildSingleRouteResult(segment, null, googlePath, debugInfo);
         }
       }
 
-      // CASE 2: Two routes - one close to start, one close to end
+      // CASE 1B: Single route that gets close but requires walking to destination
+      debugPrint('');
+      debugPrint('🔍 Case 1B: Looking for single route with walking distance...');
+      for (final segment in segments) {
+        if (segment.distanceToStart <= maxStartDistance && 
+            segment.distanceToEnd <= maxWalkingDistance) {
+          debugPrint('✅ Found single route with walking: ${segment.slug}-${segment.partIndex}');
+          debugPrint('   Segment length: ${(segment.segmentLength / 1000).toStringAsFixed(2)}km');
+          debugPrint('   Walking distance: ${(segment.distanceToEnd / 1000).toStringAsFixed(2)}km');
+          debugInfo['case'] = 'single_route_with_walking';
+          debugInfo['routes'] = [segment.slug];
+          debugInfo['walkingDistance'] = segment.distanceToEnd;
+          
+          // Get walking directions from end of route to destination
+          final walkingPath = await _fetchWalkingDirections(
+            segment.closestPointToEnd, 
+            dest
+          );
+          
+          return _buildSingleRouteResult(segment, walkingPath, googlePath, debugInfo);
+        }
+      }
+
+      // CASE 2: Two routes - one close to start, one that reaches end
+      debugPrint('');
       debugPrint('🔍 Case 2: Looking for connecting routes...');
+      
+      // Sort start candidates by distance to start (nearest first)
       final startCandidates = segments
           .where((s) => s.distanceToStart <= maxStartDistance)
-          .toList();
+          .toList()
+        ..sort((a, b) => a.distanceToStart.compareTo(b.distanceToStart));
+      
+      // Sort end candidates by distance to end (nearest to destination first)
       final endCandidates = segments
-          .where((s) => s.distanceToEnd <= maxEndDistance)
-          .toList();
+          .where((s) => s.reachesDestination)
+          .toList()
+        ..sort((a, b) => a.distanceToEnd.compareTo(b.distanceToEnd));
 
       debugPrint('   Start candidates: ${startCandidates.length}');
       debugPrint('   End candidates: ${endCandidates.length}');
 
+      const maxWalkingGap = 500.0; // 500m walking distance between routes (base distance)
+
+      // APPROACH 1: First, prioritize finding intersecting routes
       for (final startRoute in startCandidates) {
         for (final endRoute in endCandidates) {
           if (startRoute.slug == endRoute.slug && 
@@ -487,41 +801,143 @@ class RoutingService {
             continue; // Same route, already checked in case 1
           }
 
-          // Check if routes intersect
-          final intersects = routesIntersect(
-            startRoute.points, 
-            endRoute.points, 
+          final intersection = findIntersectionPoint(
+            startRoute.trimmedPoints, 
+            endRoute.trimmedPoints, 
             thresholdMeters: intersectionThreshold
           );
 
-          if (intersects) {
+          if (intersection != null) {
+            final intersectPoint = intersection['point'] as LatLng;
+            final route1Idx = intersection['route1Index'] as int;
+            final route2Idx = intersection['route2Index'] as int;
+            
             debugPrint('✅ Found intersecting routes:');
-            debugPrint('   ${startRoute.slug} → ${endRoute.slug}');
-            debugInfo['case'] = 'intersecting_routes';
-            debugInfo['routes'] = [startRoute.slug, endRoute.slug];
+            debugPrint('   ${startRoute.slug} (nearest to user)');
+            debugPrint('   → ${endRoute.slug} (nearest to destination)');
+            debugPrint('   Intersection at indices: [$route1Idx, $route2Idx]');
             
-            return _buildTwoRouteResult(
-              startRoute, endRoute, googlePath, debugInfo, intersects: true
+            // Trim route1 from start to intersection
+            final trimmedRoute1 = trimRouteToIndex(
+              startRoute.trimmedPoints, 
+              route1Idx, 
+              intersectPoint
             );
-          }
-
-          // Check gap between routes
-          final gap = calculateRouteGap(startRoute.points, endRoute.points);
-          if (gap <= maxGap) {
-            debugPrint('✅ Found close routes (gap: ${(gap / 1000).toStringAsFixed(2)}km):');
-            debugPrint('   ${startRoute.slug} → ${endRoute.slug}');
-            debugInfo['case'] = 'close_routes_with_walk';
+            
+            // Trim route2 from intersection to end
+            final trimmedRoute2 = trimRouteFromIndex(
+              endRoute.trimmedPoints, 
+              route2Idx, 
+              intersectPoint
+            );
+            
+            // Calculate length of second route segment
+            double route2Length = 0.0;
+            for (int i = 0; i < trimmedRoute2.length - 1; i++) {
+              route2Length += distanceMeters(trimmedRoute2[i], trimmedRoute2[i + 1]);
+            }
+            
+            debugPrint('   Route 2 segment length: ${(route2Length).toStringAsFixed(0)}m');
+            
+            // If second route is short (< 500m), replace with walking
+            if (route2Length < 500.0) {
+              // Check distance from intersection to final destination
+              final distanceToDestination = distanceMeters(intersectPoint, dest);
+              
+              debugPrint('   ⚠️  Route 2 is short (${(route2Length).toStringAsFixed(0)}m)');
+              debugPrint('   Distance from intersection to destination: ${(distanceToDestination).toStringAsFixed(0)}m');
+              
+              // If total walking distance from intersection is < 500m, walk to destination
+              if (distanceToDestination < 500.0) {
+                debugPrint('   Replacing Route 2 with walking to destination');
+                final walkingToDestination = await _fetchWalkingDirections(
+                  intersectPoint,
+                  dest
+                );
+                
+                debugInfo['case'] = 'single_route_with_walking';
+                debugInfo['routes'] = [startRoute.slug];
+                debugInfo['walkingDistance'] = distanceToDestination;
+                
+                return _buildSingleRouteResult(
+                  startRoute, 
+                  walkingToDestination, 
+                  googlePath, 
+                  debugInfo
+                );
+              }
+            }
+            
+            debugInfo['case'] = 'two_routes_intersecting';
             debugInfo['routes'] = [startRoute.slug, endRoute.slug];
-            debugInfo['walkingDistance'] = gap;
+            debugInfo['intersectionPoint'] = {
+              'lat': intersectPoint.latitude,
+              'lng': intersectPoint.longitude,
+            };
             
             return _buildTwoRouteResult(
-              startRoute, endRoute, googlePath, debugInfo, gap: gap
+              startRoute, endRoute, googlePath, debugInfo, 
+              trimmedRoute1: trimmedRoute1,
+              trimmedRoute2: trimmedRoute2,
+              intersects: true
             );
           }
         }
       }
 
+      // APPROACH 2: If no intersection found, check for walkable gaps
+      for (final startRoute in startCandidates) {
+        for (final endRoute in endCandidates) {
+          if (startRoute.slug == endRoute.slug && 
+              startRoute.partIndex == endRoute.partIndex) {
+            continue; // Same route, already checked in case 1
+          }
+
+          final connection = findConnectionPoint(
+            startRoute.trimmedPoints, 
+            endRoute.trimmedPoints
+          );
+          
+          if (connection != null) {
+            final gap = connection['distance'] as double;
+            final point1 = connection['point1'] as LatLng;
+            final point2 = connection['point2'] as LatLng;
+            
+            // Calculate length of second route
+            double route2Length = 0.0;
+            for (int i = 0; i < endRoute.trimmedPoints.length - 1; i++) {
+              route2Length += distanceMeters(endRoute.trimmedPoints[i], endRoute.trimmedPoints[i + 1]);
+            }
+            
+            // If second route is less than 500m, extend walking gap allowance to 1km
+            final effectiveWalkingGap = route2Length < 500.0 ? 1000.0 : maxWalkingGap;
+            
+            if (gap <= effectiveWalkingGap) {
+              debugPrint('✅ Found routes with walking connection:');
+              debugPrint('   ${startRoute.slug} (nearest to user)');
+              debugPrint('   → Walk ${(gap).toStringAsFixed(0)}m');
+              debugPrint('   → ${endRoute.slug} (nearest to destination, ${(route2Length).toStringAsFixed(0)}m)');
+              debugPrint('   Effective walking gap allowed: ${(effectiveWalkingGap).toStringAsFixed(0)}m');
+              
+              // Get walking path between the two routes
+              final walkingPath = await _fetchWalkingDirections(point1, point2);
+              
+              debugInfo['case'] = 'two_routes_with_walking';
+              debugInfo['routes'] = [startRoute.slug, endRoute.slug];
+              debugInfo['walkingDistance'] = gap;
+              
+              return _buildTwoRouteResult(
+                startRoute, endRoute, googlePath, debugInfo,
+                walkingPath: walkingPath,
+                gap: gap
+              );
+            }
+          }
+        }
+      }
+
       // CASE 3: Find connecting route
+      debugPrint('');
       debugPrint('🔍 Case 3: Looking for three-route connection...');
       if (startCandidates.isNotEmpty && endCandidates.isNotEmpty) {
         final startRoute = startCandidates.first;
@@ -533,33 +949,238 @@ class RoutingService {
             continue;
           }
 
-          final connectsStart = routesIntersect(
-            startRoute.points, 
-            connector.points, 
+          // Find intersection between start route and connector
+          final intersection1 = findIntersectionPoint(
+            startRoute.trimmedPoints, 
+            connector.trimmedPoints, 
             thresholdMeters: intersectionThreshold
           );
-          final connectsEnd = routesIntersect(
-            connector.points, 
-            endRoute.points, 
+          
+          // Find intersection between connector and end route
+          final intersection2 = findIntersectionPoint(
+            connector.trimmedPoints, 
+            endRoute.trimmedPoints, 
             thresholdMeters: intersectionThreshold
           );
 
-          if (connectsStart && connectsEnd) {
+          if (intersection1 != null && intersection2 != null) {
+            final intersectPoint1 = intersection1['point'] as LatLng;
+            final route1Idx = intersection1['route1Index'] as int;
+            final connector1Idx = intersection1['route2Index'] as int;
+            
+            final intersectPoint2 = intersection2['point'] as LatLng;
+            final connector2Idx = intersection2['route1Index'] as int;
+            final route2Idx = intersection2['route2Index'] as int;
+            
             debugPrint('✅ Found connecting route:');
             debugPrint('   ${startRoute.slug} → ${connector.slug} → ${endRoute.slug}');
+            debugPrint('   Intersection 1 at indices: [$route1Idx, $connector1Idx]');
+            debugPrint('   Intersection 2 at indices: [$connector2Idx, $route2Idx]');
+            
+            // Trim route1 from start to first intersection
+            final trimmedRoute1 = trimRouteToIndex(
+              startRoute.trimmedPoints,
+              route1Idx,
+              intersectPoint1
+            );
+            
+            // Trim connector from first intersection to second intersection
+            final trimmedConnector = <LatLng>[intersectPoint1];
+            for (int i = connector1Idx + 1; i <= connector2Idx && i < connector.trimmedPoints.length; i++) {
+              trimmedConnector.add(connector.trimmedPoints[i]);
+            }
+            if (distanceMeters(trimmedConnector.last, intersectPoint2) > 1.0) {
+              trimmedConnector.add(intersectPoint2);
+            }
+            
+            // Trim route2 from second intersection to end
+            final trimmedRoute2 = trimRouteFromIndex(
+              endRoute.trimmedPoints,
+              route2Idx,
+              intersectPoint2
+            );
+            
             debugInfo['case'] = 'three_route_connection';
             debugInfo['routes'] = [startRoute.slug, connector.slug, endRoute.slug];
+            debugInfo['intersection1'] = {
+              'lat': intersectPoint1.latitude,
+              'lng': intersectPoint1.longitude,
+            };
+            debugInfo['intersection2'] = {
+              'lat': intersectPoint2.latitude,
+              'lng': intersectPoint2.longitude,
+            };
             
             return _buildThreeRouteResult(
-              startRoute, connector, endRoute, googlePath, debugInfo
+              startRoute, connector, endRoute, googlePath, debugInfo,
+              trimmedRoute1: trimmedRoute1,
+              trimmedConnector: trimmedConnector,
+              trimmedRoute2: trimmedRoute2
             );
           }
         }
       }
 
-      // FALLBACK: Use Google route
+      // LAST RESORT: Try to find intersecting routes with relaxed constraints
       debugPrint('');
-      debugPrint('⚠️  No suitable route combination found');
+      debugPrint('🔍 Last Resort: Searching for ANY intersecting routes with relaxed constraints...');
+      
+      const relaxedStartDistance = 3000.0; // 3km from start
+      const relaxedEndDistance = 3000.0; // 3km to destination
+      const relaxedIntersectionThreshold = 200.0; // 200m intersection threshold
+      
+      // Get all routes within relaxed distance from start
+      final relaxedStartCandidates = segments
+          .where((s) => s.distanceToStart <= relaxedStartDistance)
+          .toList()
+        ..sort((a, b) => a.distanceToStart.compareTo(b.distanceToStart));
+      
+      // Get all routes within relaxed distance from destination
+      final relaxedEndCandidates = segments
+          .where((s) => s.distanceToEnd <= relaxedEndDistance)
+          .toList()
+        ..sort((a, b) => a.distanceToEnd.compareTo(b.distanceToEnd));
+      
+      debugPrint('   Relaxed start candidates: ${relaxedStartCandidates.length}');
+      debugPrint('   Relaxed end candidates: ${relaxedEndCandidates.length}');
+      
+      // PRIORITY 1: Try two-route intersections with relaxed constraints
+      for (final startRoute in relaxedStartCandidates) {
+        for (final endRoute in relaxedEndCandidates) {
+          if (startRoute.slug == endRoute.slug && 
+              startRoute.partIndex == endRoute.partIndex) {
+            continue;
+          }
+          
+          final intersection = findIntersectionPoint(
+            startRoute.trimmedPoints, 
+            endRoute.trimmedPoints, 
+            thresholdMeters: relaxedIntersectionThreshold
+          );
+          
+          if (intersection != null) {
+            final intersectPoint = intersection['point'] as LatLng;
+            final route1Idx = intersection['route1Index'] as int;
+            final route2Idx = intersection['route2Index'] as int;
+            
+            debugPrint('✅ Found intersecting routes with relaxed constraints (Case 2):');
+            debugPrint('   ${startRoute.slug} (${(startRoute.distanceToStart).toStringAsFixed(0)}m from user)');
+            debugPrint('   → ${endRoute.slug} (${(endRoute.distanceToEnd).toStringAsFixed(0)}m to destination)');
+            
+            final trimmedRoute1 = trimRouteToIndex(
+              startRoute.trimmedPoints, 
+              route1Idx, 
+              intersectPoint
+            );
+            
+            final trimmedRoute2 = trimRouteFromIndex(
+              endRoute.trimmedPoints, 
+              route2Idx, 
+              intersectPoint
+            );
+            
+            debugInfo['case'] = 'two_routes_intersecting_relaxed';
+            debugInfo['routes'] = [startRoute.slug, endRoute.slug];
+            debugInfo['intersectionPoint'] = {
+              'lat': intersectPoint.latitude,
+              'lng': intersectPoint.longitude,
+            };
+            
+            return _buildTwoRouteResult(
+              startRoute, endRoute, googlePath, debugInfo, 
+              trimmedRoute1: trimmedRoute1,
+              trimmedRoute2: trimmedRoute2,
+              intersects: true
+            );
+          }
+        }
+      }
+      
+      // PRIORITY 2: Try three-route intersections with relaxed constraints
+      for (final startRoute in relaxedStartCandidates) {
+        for (final endRoute in relaxedEndCandidates) {
+          if (startRoute.slug == endRoute.slug && 
+              startRoute.partIndex == endRoute.partIndex) {
+            continue;
+          }
+          
+          // Look for a connector route
+          for (final connector in segments) {
+            if (connector.slug == startRoute.slug || connector.slug == endRoute.slug) {
+              continue;
+            }
+
+            final intersection1 = findIntersectionPoint(
+              startRoute.trimmedPoints, 
+              connector.trimmedPoints, 
+              thresholdMeters: relaxedIntersectionThreshold
+            );
+            
+            final intersection2 = findIntersectionPoint(
+              connector.trimmedPoints, 
+              endRoute.trimmedPoints, 
+              thresholdMeters: relaxedIntersectionThreshold
+            );
+
+            if (intersection1 != null && intersection2 != null) {
+              final intersectPoint1 = intersection1['point'] as LatLng;
+              final route1Idx = intersection1['route1Index'] as int;
+              final connector1Idx = intersection1['route2Index'] as int;
+              
+              final intersectPoint2 = intersection2['point'] as LatLng;
+              final connector2Idx = intersection2['route1Index'] as int;
+              final route2Idx = intersection2['route2Index'] as int;
+              
+              debugPrint('✅ Found three-route connection with relaxed constraints (Case 3):');
+              debugPrint('   ${startRoute.slug} (${(startRoute.distanceToStart).toStringAsFixed(0)}m from user)');
+              debugPrint('   → ${connector.slug}');
+              debugPrint('   → ${endRoute.slug} (${(endRoute.distanceToEnd).toStringAsFixed(0)}m to destination)');
+              
+              final trimmedRoute1 = trimRouteToIndex(
+                startRoute.trimmedPoints,
+                route1Idx,
+                intersectPoint1
+              );
+              
+              final trimmedConnector = <LatLng>[intersectPoint1];
+              for (int i = connector1Idx + 1; i <= connector2Idx && i < connector.trimmedPoints.length; i++) {
+                trimmedConnector.add(connector.trimmedPoints[i]);
+              }
+              if (distanceMeters(trimmedConnector.last, intersectPoint2) > 1.0) {
+                trimmedConnector.add(intersectPoint2);
+              }
+              
+              final trimmedRoute2 = trimRouteFromIndex(
+                endRoute.trimmedPoints,
+                route2Idx,
+                intersectPoint2
+              );
+              
+              debugInfo['case'] = 'three_route_connection_relaxed';
+              debugInfo['routes'] = [startRoute.slug, connector.slug, endRoute.slug];
+              debugInfo['intersection1'] = {
+                'lat': intersectPoint1.latitude,
+                'lng': intersectPoint1.longitude,
+              };
+              debugInfo['intersection2'] = {
+                'lat': intersectPoint2.latitude,
+                'lng': intersectPoint2.longitude,
+              };
+              
+              return _buildThreeRouteResult(
+                startRoute, connector, endRoute, googlePath, debugInfo,
+                trimmedRoute1: trimmedRoute1,
+                trimmedConnector: trimmedConnector,
+                trimmedRoute2: trimmedRoute2
+              );
+            }
+          }
+        }
+      }
+
+      // FINAL FALLBACK: Use Google route
+      debugPrint('');
+      debugPrint('⚠️  No suitable route combination found even with relaxed constraints');
       debugPrint('   Falling back to Google route');
       debugInfo['case'] = 'fallback';
       
@@ -590,19 +1211,38 @@ class RoutingService {
 
   static RoutingResult _buildSingleRouteResult(
     RouteSegment segment,
+    List<LatLng>? walkingPath,
     List<LatLng> googlePath,
     Map<String, dynamic> debugInfo,
   ) {
-    final polyline = Polyline(
+    final polylines = <Polyline>[];
+    
+    // Main route polyline
+    polylines.add(Polyline(
       polylineId: PolylineId('${segment.slug}-${segment.partIndex}'),
-      points: segment.points,
+      points: segment.trimmedPoints,
       color: _colorPool[0],
       width: 5,
-    );
+    ));
+
+    // Add walking path if provided
+    if (walkingPath != null && walkingPath.isNotEmpty) {
+      polylines.add(Polyline(
+        polylineId: const PolylineId('walking_path'),
+        points: walkingPath,
+        color: Colors.grey,
+        width: 4,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)], // Dashed line
+      ));
+    }
+
+    final stitchedPath = walkingPath != null && walkingPath.isNotEmpty
+        ? [...segment.trimmedPoints, ...walkingPath]
+        : segment.trimmedPoints;
 
     return RoutingResult(
-      polylines: [polyline],
-      stitchedPath: segment.points,
+      polylines: polylines,
+      stitchedPath: stitchedPath,
       googlePath: googlePath,
       debugInfo: debugInfo,
     );
@@ -613,25 +1253,51 @@ class RoutingService {
     RouteSegment route2,
     List<LatLng> googlePath,
     Map<String, dynamic> debugInfo, {
+    List<LatLng>? trimmedRoute1, // Custom trimmed route 1 (for intersections)
+    List<LatLng>? trimmedRoute2, // Custom trimmed route 2 (for intersections)
+    List<LatLng>? walkingPath, // Walking path between routes
     bool intersects = false,
     double? gap,
   }) {
-    final polylines = [
-      Polyline(
-        polylineId: PolylineId('${route1.slug}-${route1.partIndex}'),
-        points: route1.points,
-        color: _colorPool[0],
-        width: 5,
-      ),
-      Polyline(
-        polylineId: PolylineId('${route2.slug}-${route2.partIndex}'),
-        points: route2.points,
-        color: _colorPool[1],
-        width: 5,
-      ),
-    ];
+    final polylines = <Polyline>[];
+    
+    // Use custom trimmed routes if provided, otherwise use default trimmed points
+    final route1Points = trimmedRoute1 ?? route1.trimmedPoints;
+    final route2Points = trimmedRoute2 ?? route2.trimmedPoints;
+    
+    // Add first route
+    polylines.add(Polyline(
+      polylineId: PolylineId('${route1.slug}-${route1.partIndex}'),
+      points: route1Points,
+      color: _colorPool[0],
+      width: 5,
+    ));
 
-    final stitchedPath = [...route1.points, ...route2.points];
+    // Add walking path if provided (between routes)
+    if (walkingPath != null && walkingPath.isNotEmpty) {
+      polylines.add(Polyline(
+        polylineId: const PolylineId('walking_connection'),
+        points: walkingPath,
+        color: Colors.grey,
+        width: 4,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)], // Dashed line
+      ));
+    }
+
+    // Add second route
+    polylines.add(Polyline(
+      polylineId: PolylineId('${route2.slug}-${route2.partIndex}'),
+      points: route2Points,
+      color: _colorPool[1],
+      width: 5,
+    ));
+
+    // Build stitched path
+    final stitchedPath = <LatLng>[
+      ...route1Points,
+      if (walkingPath != null && walkingPath.isNotEmpty) ...walkingPath,
+      ...route2Points,
+    ];
 
     return RoutingResult(
       polylines: polylines,
@@ -646,30 +1312,38 @@ class RoutingService {
     RouteSegment connector,
     RouteSegment route2,
     List<LatLng> googlePath,
-    Map<String, dynamic> debugInfo,
-  ) {
+    Map<String, dynamic> debugInfo, {
+    List<LatLng>? trimmedRoute1,
+    List<LatLng>? trimmedConnector,
+    List<LatLng>? trimmedRoute2,
+  }) {
+    // Use custom trimmed routes if provided, otherwise use default trimmed points
+    final route1Points = trimmedRoute1 ?? route1.trimmedPoints;
+    final connectorPoints = trimmedConnector ?? connector.trimmedPoints;
+    final route2Points = trimmedRoute2 ?? route2.trimmedPoints;
+    
     final polylines = [
       Polyline(
         polylineId: PolylineId('${route1.slug}-${route1.partIndex}'),
-        points: route1.points,
+        points: route1Points,
         color: _colorPool[0],
         width: 5,
       ),
       Polyline(
         polylineId: PolylineId('${connector.slug}-${connector.partIndex}'),
-        points: connector.points,
+        points: connectorPoints,
         color: _colorPool[1],
         width: 5,
       ),
       Polyline(
         polylineId: PolylineId('${route2.slug}-${route2.partIndex}'),
-        points: route2.points,
+        points: route2Points,
         color: _colorPool[2],
         width: 5,
       ),
     ];
 
-    final stitchedPath = [...route1.points, ...connector.points, ...route2.points];
+    final stitchedPath = [...route1Points, ...connectorPoints, ...route2Points];
 
     return RoutingResult(
       polylines: polylines,

@@ -192,7 +192,7 @@ class DistanceModal extends StatelessWidget {
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.center,
                                     children: [
-                                      // List of routes with distances
+                                      // List of routes with distances (exclude walking, max 2)
                                       routes.isEmpty
                                           ? const Text(
                                               'No routes',
@@ -202,19 +202,34 @@ class DistanceModal extends StatelessWidget {
                                               ),
                                             )
                                           : Column(
-                                              children: routes.map((route) {
-                                                return Padding(
-                                                  padding: const EdgeInsets.only(bottom: 6),
-                                                  child: Text(
-                                                    '${route.name}: ${route.kilometers.toStringAsFixed(2)} km',
-                                                    style: const TextStyle(
-                                                      fontSize: 15,
-                                                      color: Colors.black87,
+                                              children: [
+                                                // Filter out walking distances
+                                                ...routes
+                                                    .where((route) => !route.name.toLowerCase().contains('walk'))
+                                                    .take(2)
+                                                    .toList()
+                                                    .asMap()
+                                                    .entries
+                                                    .map((entry) {
+                                                  final index = entry.key;
+                                                  final route = entry.value;
+                                                  final nonWalkingCount = routes.where((r) => !r.name.toLowerCase().contains('walk')).length;
+                                                  final isLastShown = index == 1;
+                                                  final hasMore = nonWalkingCount > 2;
+                                                  
+                                                  return Padding(
+                                                    padding: const EdgeInsets.only(bottom: 6),
+                                                    child: Text(
+                                                      '${route.name}: ${route.kilometers.toStringAsFixed(2)} km${(isLastShown && hasMore) ? ' ...' : ''}',
+                                                      style: const TextStyle(
+                                                        fontSize: 15,
+                                                        color: Colors.black87,
+                                                      ),
+                                                      textAlign: TextAlign.center,
                                                     ),
-                                                    textAlign: TextAlign.center,
-                                                  ),
-                                                );
-                                              }).toList(),
+                                                  );
+                                                }).toList(),
+                                              ],
                                             ),
                                       const SizedBox(height: 8),
                                       // Total distance summary
