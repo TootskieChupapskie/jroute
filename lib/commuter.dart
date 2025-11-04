@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'components/logout_button.dart';
 import 'components/search_field.dart';
+import 'components/distance_modal.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/conductor_map_render.dart';
 import 'services/routing_service.dart';
@@ -20,6 +21,8 @@ class _CommuterPageState extends State<CommuterPage> {
   Set<Marker> _markers = {};
   bool _myLocationEnabled = false;
   bool _isRouting = false;
+  bool _isModalExpanded = false;
+  List<RouteInfo> _routeInfoList = [];
 
   static const CameraPosition _initialPosition = CameraPosition(
     target: LatLng(7.1907, 125.4553),
@@ -50,6 +53,33 @@ class _CommuterPageState extends State<CommuterPage> {
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
+  }
+
+  /// Calculate distance of a polyline in kilometers
+  double _calculatePolylineDistance(List<LatLng> points) {
+    if (points.length < 2) return 0.0;
+    double totalMeters = 0.0;
+    for (int i = 0; i < points.length - 1; i++) {
+      totalMeters += RoutingService.distanceMeters(points[i], points[i + 1]);
+    }
+    return totalMeters / 1000.0; // Convert to kilometers
+  }
+
+  /// Extract route name from polyline ID and convert to display format
+  /// Converts "bago-aplaya" to "Bago Aplaya" (camel case with spaces)
+  String _extractRouteName(String polylineId) {
+    // polylineId format is usually "slug-partIndex" or "slug_partIndex"
+    final parts = polylineId.split(RegExp(r'[-_]'));
+    final slug = parts.isNotEmpty ? parts[0] : polylineId;
+    
+    // Split by hyphens and capitalize each word
+    final words = slug.split('-');
+    final capitalizedWords = words.map((word) {
+      if (word.isEmpty) return word;
+      return word[0].toUpperCase() + word.substring(1).toLowerCase();
+    }).toList();
+    
+    return capitalizedWords.join(' ');
   }
 
   /// Load a route by name using the conductor map service.
@@ -101,7 +131,11 @@ class _CommuterPageState extends State<CommuterPage> {
             left: 80,
             onPlaceSelected: (loc, desc) async {
               // Try to get device location as start point
-              setState(() => _isRouting = true);
+              setState(() {
+                _isRouting = true;
+                _isModalExpanded = false; // Hide modal while routing
+                _routeInfoList = []; // Clear previous route info
+              });
               try {
                 final pos = await Geolocator.getCurrentPosition();
                 final start = LatLng(pos.latitude, pos.longitude);
@@ -132,6 +166,14 @@ class _CommuterPageState extends State<CommuterPage> {
                   ));
                 }
 
+                // Build route info list from polylines
+                final routeInfoList = <RouteInfo>[];
+                for (final polyline in routing.polylines) {
+                  final routeName = _extractRouteName(polyline.polylineId.value);
+                  final distance = _calculatePolylineDistance(polyline.points);
+                  routeInfoList.add(RouteInfo(name: routeName, kilometers: distance));
+                }
+
                 setState(() {
                   // replace map polylines with routing result
                   _polylines = routing.polylines.toSet();
@@ -140,6 +182,9 @@ class _CommuterPageState extends State<CommuterPage> {
                     Marker(markerId: const MarkerId('start'), position: start, infoWindow: const InfoWindow(title: 'You')),
                     Marker(markerId: const MarkerId('dest'), position: loc, infoWindow: InfoWindow(title: desc)),
                   };
+                  // Update route info and show modal
+                  _routeInfoList = routeInfoList;
+                  _isModalExpanded = true;
                 });
 
                 // fit camera to stitched path if available, otherwise to dest
@@ -208,6 +253,22 @@ class _CommuterPageState extends State<CommuterPage> {
                   ),
                 ),
               ),
+            ),
+
+          // Distance modal - shows route info and fare
+          if (_routeInfoList.isNotEmpty)
+            DistanceModal(
+              isExpanded: _isModalExpanded,
+              onVerticalDragEnd: (details) {
+                if (details.primaryVelocity != null) {
+                  if (details.primaryVelocity! < -300) {
+                    setState(() => _isModalExpanded = true);
+                  } else if (details.primaryVelocity! > 300) {
+                    setState(() => _isModalExpanded = false);
+                  }
+                }
+              },
+              routes: _routeInfoList,
             ),
         ],
       ),
