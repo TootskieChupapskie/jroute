@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:jroute/commuter.dart';
 import 'conductor.dart';
+import 'services/routing_service.dart';
 
 class LoginPage extends StatelessWidget {
   const LoginPage({Key? key}) : super(key: key);
@@ -73,6 +74,9 @@ class LoginPage extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 20),
                     ),
                     onPressed: () {
+                      // Start preloading routes in the background for optimization
+                      RoutingService.preloadAllRoutes();
+                      
                       Navigator.push(
                         context,
                         MaterialPageRoute(

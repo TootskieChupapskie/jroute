@@ -1,18 +1,2 @@
-# jroute
+#JRoute - A Jeepney Routing Service Based in Davao City
 
-A jeepney routing service based in davao city, specifically made for tourists and other non-natives.
-
-keep in mind, some of the routes are otudated since they are taken from non-credible source
-
-## Getting Started
-
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.

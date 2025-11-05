@@ -70,59 +70,59 @@ class RoutingService {
   static List<String>? _routeIndexCache;
 
   static Future<List<String>> fetchRouteIndex() async {
-    debugPrint('═══════════════════════════════════════════');
-    debugPrint('📂 FETCHING ROUTE INDEX');
-    debugPrint('═══════════════════════════════════════════');
+    debugPrint('-------------------------------------------');
+    debugPrint('?? FETCHING ROUTE INDEX');
+    debugPrint('-------------------------------------------');
     
     if (_routeIndexCache != null) {
-      debugPrint('✅ Cache hit - returning ${_routeIndexCache!.length} cached routes');
+      debugPrint('? Cache hit - returning ${_routeIndexCache!.length} cached routes');
       return _routeIndexCache!;
     }
     
     final supabaseUrl = dotenv.env['SUPABASE_URL'] ?? '';
     final bucket = dotenv.env['SUPABASE_BUCKET'] ?? 'Jroute';
     
-    debugPrint('🔧 Config:');
-    debugPrint('   SUPABASE_URL: ${supabaseUrl.isEmpty ? "❌ EMPTY" : "✅ $supabaseUrl"}');
+    debugPrint('?? Config:');
+    debugPrint('   SUPABASE_URL: ${supabaseUrl.isEmpty ? "? EMPTY" : "? $supabaseUrl"}');
     debugPrint('   SUPABASE_BUCKET: $bucket');
     
     if (supabaseUrl.isEmpty) {
-      debugPrint('❌ SUPABASE_URL is empty - returning empty list');
+      debugPrint('? SUPABASE_URL is empty - returning empty list');
       return [];
     }
     
     try {
       final url = Uri.parse('$supabaseUrl/storage/v1/object/public/$bucket/routes/index.json');
-      debugPrint('🌐 Fetching: $url');
+      debugPrint('?? Fetching: $url');
       
       final res = await http.get(url);
-      debugPrint('📡 Response status: ${res.statusCode}');
+      debugPrint('?? Response status: ${res.statusCode}');
       
       if (res.statusCode != 200) {
-        debugPrint('❌ Failed with status ${res.statusCode}');
+        debugPrint('? Failed with status ${res.statusCode}');
         debugPrint('   Response body: ${res.body}');
         return [];
       }
       
-      debugPrint('✅ Success! Parsing JSON...');
+      debugPrint('? Success! Parsing JSON...');
       final data = json.decode(res.body) as List<dynamic>;
       _routeIndexCache = data.map((e) => e.toString()).toList();
       
-      debugPrint('✅ Loaded ${_routeIndexCache!.length} routes');
+      debugPrint('? Loaded ${_routeIndexCache!.length} routes');
       
       return _routeIndexCache!;
     } catch (e, st) {
-      debugPrint('❌ fetchRouteIndex EXCEPTION: $e');
+      debugPrint('? fetchRouteIndex EXCEPTION: $e');
       debugPrint('   Stack trace: $st');
       return [];
     }
   }
 
   static Future<List<List<LatLng>>> loadRouteLines(String slug) async {
-    debugPrint('📥 Loading route: $slug');
+    debugPrint('?? Loading route: $slug');
     
     if (_routeCache.containsKey(slug)) {
-      debugPrint('   ✅ Cache hit');
+      debugPrint('   ? Cache hit');
       return _routeCache[slug]!;
     }
 
@@ -130,7 +130,7 @@ class RoutingService {
     final bucket = dotenv.env['SUPABASE_BUCKET'] ?? 'Jroute';
     
     if (supabaseUrl.isEmpty) {
-      debugPrint('   ❌ Missing SUPABASE_URL');
+      debugPrint('   ? Missing SUPABASE_URL');
       return [];
     }
 
@@ -141,14 +141,14 @@ class RoutingService {
       final res = await http.get(url);
       
       if (res.statusCode != 200) {
-        debugPrint('   ❌ Failed (${res.statusCode})');
+        debugPrint('   ? Failed (${res.statusCode})');
         return [];
       }
 
       final data = json.decode(res.body);
       
       if (data is! Map<String, dynamic>) {
-        debugPrint('   ❌ Invalid JSON structure');
+        debugPrint('   ? Invalid JSON structure');
         return [];
       }
 
@@ -181,19 +181,20 @@ class RoutingService {
         }
       }
 
-      debugPrint('   ✅ Loaded ${parts.length} parts');
+      debugPrint('   ? Loaded ${parts.length} parts');
       _routeCache[slug] = parts;
       return parts;
     } catch (e) {
-      debugPrint('   ❌ Exception: $e');
+      debugPrint('   ? Exception: $e');
       return [];
     }
   }
 
-  static Future<List<LatLng>> fetchGoogleDirections(LatLng start, LatLng dest) async {
-    debugPrint('🗺️  Fetching Google Directions');
+  static Future<List<LatLng>> fetchGoogleDirections(LatLng start, LatLng dest, {String mode = 'driving'}) async {
+    debugPrint('???  Fetching Google Directions');
     debugPrint('   From: ${start.latitude}, ${start.longitude}');
     debugPrint('   To: ${dest.latitude}, ${dest.longitude}');
+    debugPrint('   Mode: $mode');
     
     final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
     if (apiKey.isEmpty) {
@@ -207,7 +208,7 @@ class RoutingService {
       'https://maps.googleapis.com/maps/api/directions/json'
       '?origin=$origin'
       '&destination=$destination'
-      '&mode=driving'
+      '&mode=$mode'
       '&key=$apiKey'
     );
 
@@ -239,7 +240,7 @@ class RoutingService {
       }
 
       final decoded = _decodePolyline(encodedPoints);
-      debugPrint('   ✅ Decoded ${decoded.length} points');
+      debugPrint('   ? Decoded ${decoded.length} points');
       
       return decoded;
     } catch (e) {
@@ -249,13 +250,13 @@ class RoutingService {
   }
 
   static Future<List<LatLng>> _fetchWalkingDirections(LatLng start, LatLng dest) async {
-    debugPrint('🚶 Fetching Walking Directions');
+    debugPrint('?? Fetching Walking Directions');
     debugPrint('   From: ${start.latitude}, ${start.longitude}');
     debugPrint('   To: ${dest.latitude}, ${dest.longitude}');
     
     final apiKey = dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
     if (apiKey.isEmpty) {
-      debugPrint('   ⚠️  No API key, returning straight line');
+      debugPrint('   ??  No API key, returning straight line');
       return [start, dest];
     }
 
@@ -274,7 +275,7 @@ class RoutingService {
       final res = await http.get(url);
       
       if (res.statusCode != 200) {
-        debugPrint('   ⚠️  API failed, returning straight line');
+        debugPrint('   ??  API failed, returning straight line');
         return [start, dest];
       }
 
@@ -282,13 +283,13 @@ class RoutingService {
       final status = data['status'] as String?;
       
       if (status != 'OK') {
-        debugPrint('   ⚠️  Status: $status, returning straight line');
+        debugPrint('   ??  Status: $status, returning straight line');
         return [start, dest];
       }
 
       final routes = data['routes'] as List<dynamic>?;
       if (routes == null || routes.isEmpty) {
-        debugPrint('   ⚠️  No routes, returning straight line');
+        debugPrint('   ??  No routes, returning straight line');
         return [start, dest];
       }
 
@@ -297,16 +298,16 @@ class RoutingService {
       final encodedPoints = overviewPolyline?['points'] as String?;
       
       if (encodedPoints == null || encodedPoints.isEmpty) {
-        debugPrint('   ⚠️  No polyline, returning straight line');
+        debugPrint('   ??  No polyline, returning straight line');
         return [start, dest];
       }
 
       final decoded = _decodePolyline(encodedPoints);
-      debugPrint('   ✅ Walking path: ${decoded.length} points');
+      debugPrint('   ? Walking path: ${decoded.length} points');
       
       return decoded;
     } catch (e) {
-      debugPrint('   ⚠️  Exception: $e, returning straight line');
+      debugPrint('   ??  Exception: $e, returning straight line');
       return [start, dest];
     }
   }
@@ -355,6 +356,17 @@ class RoutingService {
         math.cos(lat1) * math.cos(lat2) * math.sin(dLon / 2) * math.sin(dLon / 2);
     final c = 2 * math.atan2(math.sqrt(hav), math.sqrt(1 - hav));
     return R * c;
+  }
+
+  // Calculate total distance of a path in meters
+  static double _calculateTotalDistance(List<LatLng> points) {
+    if (points.length < 2) return 0.0;
+    
+    double totalMeters = 0.0;
+    for (int i = 0; i < points.length - 1; i++) {
+      totalMeters += distanceMeters(points[i], points[i + 1]);
+    }
+    return totalMeters;
   }
 
   static Map<String, dynamic> closestPointOnSegment(LatLng p, LatLng a, LatLng b) {
@@ -419,7 +431,7 @@ class RoutingService {
     final startPoint = startInfo['point'] as LatLng;
     final endPoint = endInfo['point'] as LatLng;
 
-    debugPrint('   🔪 Trimming route:');
+    debugPrint('   ?? Trimming route:');
     debugPrint('      Route length: ${route.length} points');
     debugPrint('      Start index: $startIdx, End index: $endIdx');
     debugPrint('      Direction: ${startIdx > endIdx ? "BACKWARDS" : "FORWARDS"}');
@@ -611,9 +623,9 @@ class RoutingService {
 
   static Future<List<RouteSegment>> findAllRouteSegments(LatLng start, LatLng dest) async {
     debugPrint('');
-    debugPrint('═══════════════════════════════════════════');
-    debugPrint('🔍 FINDING ROUTE SEGMENTS');
-    debugPrint('═══════════════════════════════════════════');
+    debugPrint('-------------------------------------------');
+    debugPrint('?? FINDING ROUTE SEGMENTS');
+    debugPrint('-------------------------------------------');
     
     final slugs = await fetchRouteIndex();
     final segments = <RouteSegment>[];
@@ -663,9 +675,9 @@ class RoutingService {
 
   static Future<RoutingResult> buildRoute(LatLng start, LatLng dest, {List<String>? slugs}) async {
     debugPrint('');
-    debugPrint('╔═══════════════════════════════════════════╗');
-    debugPrint('║     🚀 BUILD ROUTE STARTED               ║');
-    debugPrint('╚═══════════════════════════════════════════╝');
+    debugPrint('+-------------------------------------------+');
+    debugPrint('?     ?? BUILD ROUTE STARTED               ?');
+    debugPrint('+-------------------------------------------+');
     debugPrint('Start: ${start.latitude}, ${start.longitude}');
     debugPrint('Dest: ${dest.latitude}, ${dest.longitude}');
     
@@ -687,7 +699,7 @@ class RoutingService {
       final segments = await findAllRouteSegments(start, dest);
       
       if (segments.isEmpty) {
-        debugPrint('❌ No routes available');
+        debugPrint('? No routes available');
         throw RouteNotFoundException('No routes in index');
       }
 
@@ -702,79 +714,51 @@ class RoutingService {
       });
       
       debugPrint('');
-      debugPrint('📊 Route Analysis:');
+      debugPrint('?? Route Analysis:');
       for (int i = 0; i < math.min(10, segments.length); i++) {
         final s = segments[i];
         debugPrint('   [$i] ${s.slug}-${s.partIndex}');
         debugPrint('       Start: ${(s.distanceToStart / 1000).toStringAsFixed(2)}km');
         debugPrint('       End: ${(s.distanceToEnd / 1000).toStringAsFixed(2)}km');
         debugPrint('       Length: ${(s.segmentLength / 1000).toStringAsFixed(2)}km');
-        debugPrint('       Reaches dest: ${s.reachesDestination ? "✅" : "❌"}');
+        debugPrint('       Reaches dest: ${s.reachesDestination ? "?" : "?"}');
       }
 
       const maxStartDistance = 1000.0; // 1km
-      const maxWalkingDistance = 500.0; // 500m walking distance to destination
       const intersectionThreshold = 100.0; // 100m
 
-      // CASE 1A: Single route that reaches destination perfectly
+      // CASE 1: Single route that reaches destination
+      // Prioritize by: 1) Nearest to user, 2) Shortest total distance
       debugPrint('');
-      debugPrint('🔍 Case 1A: Looking for single route that reaches destination...');
-      for (final segment in segments) {
-        if (segment.distanceToStart <= maxStartDistance && 
-            segment.reachesDestination) {
-          debugPrint('✅ Found single route: ${segment.slug}-${segment.partIndex}');
-          debugPrint('   Segment length: ${(segment.segmentLength / 1000).toStringAsFixed(2)}km');
-          
-          // Even if it "reaches" destination, check if there's a small gap
-          if (segment.distanceToEnd > 10.0) { // More than 10m gap
-            debugPrint('   Small gap to destination: ${segment.distanceToEnd.toStringAsFixed(0)}m');
-            debugPrint('   Adding walking path to exact destination');
-            
-            final walkingPath = await _fetchWalkingDirections(
-              segment.closestPointToEnd,
-              dest
-            );
-            
-            debugInfo['case'] = 'single_route_with_walking';
-            debugInfo['routes'] = [segment.slug];
-            debugInfo['walkingDistance'] = segment.distanceToEnd;
-            
-            return _buildSingleRouteResult(segment, walkingPath, googlePath, debugInfo);
-          }
-          
-          debugInfo['case'] = 'single_route_complete';
-          debugInfo['routes'] = [segment.slug];
-          
-          return _buildSingleRouteResult(segment, null, googlePath, debugInfo);
-        }
-      }
-
-      // CASE 1B: Single route that gets close but requires walking to destination
-      debugPrint('');
-      debugPrint('🔍 Case 1B: Looking for single route with walking distance...');
-      for (final segment in segments) {
-        if (segment.distanceToStart <= maxStartDistance && 
-            segment.distanceToEnd <= maxWalkingDistance) {
-          debugPrint('✅ Found single route with walking: ${segment.slug}-${segment.partIndex}');
-          debugPrint('   Segment length: ${(segment.segmentLength / 1000).toStringAsFixed(2)}km');
-          debugPrint('   Walking distance: ${(segment.distanceToEnd / 1000).toStringAsFixed(2)}km');
-          debugInfo['case'] = 'single_route_with_walking';
-          debugInfo['routes'] = [segment.slug];
-          debugInfo['walkingDistance'] = segment.distanceToEnd;
-          
-          // Get walking directions from end of route to destination
-          final walkingPath = await _fetchWalkingDirections(
-            segment.closestPointToEnd, 
-            dest
-          );
-          
-          return _buildSingleRouteResult(segment, walkingPath, googlePath, debugInfo);
-        }
+      debugPrint('?? Case 1: Looking for single route that reaches destination...');
+      
+      final case1Candidates = segments
+          .where((s) => s.distanceToStart <= maxStartDistance && s.reachesDestination)
+          .toList();
+      
+      if (case1Candidates.isNotEmpty) {
+        // Sort by: 1) Distance to start (nearest first), 2) Segment length (shortest first)
+        case1Candidates.sort((a, b) {
+          final startComparison = a.distanceToStart.compareTo(b.distanceToStart);
+          if (startComparison != 0) return startComparison;
+          return a.segmentLength.compareTo(b.segmentLength);
+        });
+        
+        final bestSegment = case1Candidates.first;
+        debugPrint('? Found best single route: ${bestSegment.slug}-${bestSegment.partIndex}');
+        debugPrint('   Distance to start: ${(bestSegment.distanceToStart).toStringAsFixed(0)}m');
+        debugPrint('   Segment length: ${(bestSegment.segmentLength / 1000).toStringAsFixed(2)}km');
+        debugPrint('   Distance to end: ${(bestSegment.distanceToEnd).toStringAsFixed(0)}m');
+        
+        debugInfo['case'] = 'single_route';
+        debugInfo['routes'] = [bestSegment.slug];
+        
+        return await _buildSingleRouteResult(bestSegment, null, googlePath, debugInfo, start, dest);
       }
 
       // CASE 2: Two routes - one close to start, one that reaches end
       debugPrint('');
-      debugPrint('🔍 Case 2: Looking for connecting routes...');
+      debugPrint('?? Case 2: Looking for connecting routes...');
       
       // Sort start candidates by distance to start (nearest first)
       final startCandidates = segments
@@ -812,9 +796,9 @@ class RoutingService {
             final route1Idx = intersection['route1Index'] as int;
             final route2Idx = intersection['route2Index'] as int;
             
-            debugPrint('✅ Found intersecting routes:');
+            debugPrint('? Found intersecting routes:');
             debugPrint('   ${startRoute.slug} (nearest to user)');
-            debugPrint('   → ${endRoute.slug} (nearest to destination)');
+            debugPrint('   ? ${endRoute.slug} (nearest to destination)');
             debugPrint('   Intersection at indices: [$route1Idx, $route2Idx]');
             
             // Trim route1 from start to intersection
@@ -844,7 +828,7 @@ class RoutingService {
               // Check distance from intersection to final destination
               final distanceToDestination = distanceMeters(intersectPoint, dest);
               
-              debugPrint('   ⚠️  Route 2 is short (${(route2Length).toStringAsFixed(0)}m)');
+              debugPrint('   ??  Route 2 is short (${(route2Length).toStringAsFixed(0)}m)');
               debugPrint('   Distance from intersection to destination: ${(distanceToDestination).toStringAsFixed(0)}m');
               
               // If total walking distance from intersection is < 500m, walk to destination
@@ -859,11 +843,13 @@ class RoutingService {
                 debugInfo['routes'] = [startRoute.slug];
                 debugInfo['walkingDistance'] = distanceToDestination;
                 
-                return _buildSingleRouteResult(
+                return await _buildSingleRouteResult(
                   startRoute, 
                   walkingToDestination, 
                   googlePath, 
-                  debugInfo
+                  debugInfo,
+                  start,
+                  dest
                 );
               }
             }
@@ -875,8 +861,8 @@ class RoutingService {
               'lng': intersectPoint.longitude,
             };
             
-            return _buildTwoRouteResult(
-              startRoute, endRoute, googlePath, debugInfo, 
+            return await _buildTwoRouteResult(
+              startRoute, endRoute, googlePath, debugInfo, start, dest,
               trimmedRoute1: trimmedRoute1,
               trimmedRoute2: trimmedRoute2,
               intersects: true
@@ -913,10 +899,10 @@ class RoutingService {
             final effectiveWalkingGap = route2Length < 500.0 ? 1000.0 : maxWalkingGap;
             
             if (gap <= effectiveWalkingGap) {
-              debugPrint('✅ Found routes with walking connection:');
+              debugPrint('? Found routes with walking connection:');
               debugPrint('   ${startRoute.slug} (nearest to user)');
-              debugPrint('   → Walk ${(gap).toStringAsFixed(0)}m');
-              debugPrint('   → ${endRoute.slug} (nearest to destination, ${(route2Length).toStringAsFixed(0)}m)');
+              debugPrint('   ? Walk ${(gap).toStringAsFixed(0)}m');
+              debugPrint('   ? ${endRoute.slug} (nearest to destination, ${(route2Length).toStringAsFixed(0)}m)');
               debugPrint('   Effective walking gap allowed: ${(effectiveWalkingGap).toStringAsFixed(0)}m');
               
               // Get walking path between the two routes
@@ -926,8 +912,8 @@ class RoutingService {
               debugInfo['routes'] = [startRoute.slug, endRoute.slug];
               debugInfo['walkingDistance'] = gap;
               
-              return _buildTwoRouteResult(
-                startRoute, endRoute, googlePath, debugInfo,
+              return await _buildTwoRouteResult(
+                startRoute, endRoute, googlePath, debugInfo, start, dest,
                 walkingPath: walkingPath,
                 gap: gap
               );
@@ -936,9 +922,9 @@ class RoutingService {
         }
       }
 
-      // CASE 3: Find connecting route
+      // CASE 3: Find connecting route      // CASE 3: Find connecting route
       debugPrint('');
-      debugPrint('🔍 Case 3: Looking for three-route connection...');
+      debugPrint('?? Case 3: Looking for three-route connection...');
       if (startCandidates.isNotEmpty && endCandidates.isNotEmpty) {
         final startRoute = startCandidates.first;
         final endRoute = endCandidates.first;
@@ -972,8 +958,8 @@ class RoutingService {
             final connector2Idx = intersection2['route1Index'] as int;
             final route2Idx = intersection2['route2Index'] as int;
             
-            debugPrint('✅ Found connecting route:');
-            debugPrint('   ${startRoute.slug} → ${connector.slug} → ${endRoute.slug}');
+            debugPrint('? Found connecting route:');
+            debugPrint('   ${startRoute.slug} ? ${connector.slug} ? ${endRoute.slug}');
             debugPrint('   Intersection 1 at indices: [$route1Idx, $connector1Idx]');
             debugPrint('   Intersection 2 at indices: [$connector2Idx, $route2Idx]');
             
@@ -1011,8 +997,8 @@ class RoutingService {
               'lng': intersectPoint2.longitude,
             };
             
-            return _buildThreeRouteResult(
-              startRoute, connector, endRoute, googlePath, debugInfo,
+            return await _buildThreeRouteResult(
+              startRoute, connector, endRoute, googlePath, debugInfo, start, dest,
               trimmedRoute1: trimmedRoute1,
               trimmedConnector: trimmedConnector,
               trimmedRoute2: trimmedRoute2
@@ -1023,7 +1009,7 @@ class RoutingService {
 
       // LAST RESORT: Try to find intersecting routes with relaxed constraints
       debugPrint('');
-      debugPrint('🔍 Last Resort: Searching for ANY intersecting routes with relaxed constraints...');
+      debugPrint('?? Last Resort: Searching for ANY intersecting routes with relaxed constraints...');
       
       const relaxedStartDistance = 3000.0; // 3km from start
       const relaxedEndDistance = 3000.0; // 3km to destination
@@ -1063,9 +1049,9 @@ class RoutingService {
             final route1Idx = intersection['route1Index'] as int;
             final route2Idx = intersection['route2Index'] as int;
             
-            debugPrint('✅ Found intersecting routes with relaxed constraints (Case 2):');
+            debugPrint('? Found intersecting routes with relaxed constraints (Case 2):');
             debugPrint('   ${startRoute.slug} (${(startRoute.distanceToStart).toStringAsFixed(0)}m from user)');
-            debugPrint('   → ${endRoute.slug} (${(endRoute.distanceToEnd).toStringAsFixed(0)}m to destination)');
+            debugPrint('   ? ${endRoute.slug} (${(endRoute.distanceToEnd).toStringAsFixed(0)}m to destination)');
             
             final trimmedRoute1 = trimRouteToIndex(
               startRoute.trimmedPoints, 
@@ -1086,8 +1072,8 @@ class RoutingService {
               'lng': intersectPoint.longitude,
             };
             
-            return _buildTwoRouteResult(
-              startRoute, endRoute, googlePath, debugInfo, 
+            return await _buildTwoRouteResult(
+              startRoute, endRoute, googlePath, debugInfo, start, dest,
               trimmedRoute1: trimmedRoute1,
               trimmedRoute2: trimmedRoute2,
               intersects: true
@@ -1131,10 +1117,10 @@ class RoutingService {
               final connector2Idx = intersection2['route1Index'] as int;
               final route2Idx = intersection2['route2Index'] as int;
               
-              debugPrint('✅ Found three-route connection with relaxed constraints (Case 3):');
+              debugPrint('? Found three-route connection with relaxed constraints (Case 3):');
               debugPrint('   ${startRoute.slug} (${(startRoute.distanceToStart).toStringAsFixed(0)}m from user)');
-              debugPrint('   → ${connector.slug}');
-              debugPrint('   → ${endRoute.slug} (${(endRoute.distanceToEnd).toStringAsFixed(0)}m to destination)');
+              debugPrint('   ? ${connector.slug}');
+              debugPrint('   ? ${endRoute.slug} (${(endRoute.distanceToEnd).toStringAsFixed(0)}m to destination)');
               
               final trimmedRoute1 = trimRouteToIndex(
                 startRoute.trimmedPoints,
@@ -1167,8 +1153,8 @@ class RoutingService {
                 'lng': intersectPoint2.longitude,
               };
               
-              return _buildThreeRouteResult(
-                startRoute, connector, endRoute, googlePath, debugInfo,
+              return await _buildThreeRouteResult(
+                startRoute, connector, endRoute, googlePath, debugInfo, start, dest,
                 trimmedRoute1: trimmedRoute1,
                 trimmedConnector: trimmedConnector,
                 trimmedRoute2: trimmedRoute2
@@ -1180,7 +1166,7 @@ class RoutingService {
 
       // FINAL FALLBACK: Use Google route
       debugPrint('');
-      debugPrint('⚠️  No suitable route combination found even with relaxed constraints');
+      debugPrint('??  No suitable route combination found even with relaxed constraints');
       debugPrint('   Falling back to Google route');
       debugInfo['case'] = 'fallback';
       
@@ -1201,7 +1187,7 @@ class RoutingService {
 
     } catch (e, st) {
       debugPrint('');
-      debugPrint('❌ BUILD ROUTE FAILED: $e');
+      debugPrint('? BUILD ROUTE FAILED: $e');
       debugPrint('   Stack: $st');
       
       if (e is RouteNotFoundException) rethrow;
@@ -1209,13 +1195,247 @@ class RoutingService {
     }
   }
 
-  static RoutingResult _buildSingleRouteResult(
+  /// Builds up to 3 different route options for the user to choose from
+  static Future<List<RoutingResult>> buildMultipleRoutes(LatLng start, LatLng dest) async {
+    debugPrint('');
+    debugPrint('+-------------------------------------------+');
+    debugPrint('?  ?? BUILD MULTIPLE ROUTES (3 OPTIONS)    ?');
+    debugPrint('+-------------------------------------------+');
+    
+    List<RoutingResult> routeOptions = [];
+    Set<String> usedRouteSlugs = {}; // Track which routes we've already used
+    
+    try {
+      // Get all segments once
+      final allSegments = await findAllRouteSegments(start, dest);
+      if (allSegments.isEmpty) {
+        throw RouteNotFoundException('No routes in index');
+      }
+      
+      // Sort by priority
+      allSegments.sort((a, b) {
+        if (a.reachesDestination && !b.reachesDestination) return -1;
+        if (!a.reachesDestination && b.reachesDestination) return 1;
+        return a.distanceToStart.compareTo(b.distanceToStart);
+      });
+      
+      final googlePath = await fetchGoogleDirections(start, dest);
+      
+      // Try to build 3 different route options
+      for (int attempt = 0; attempt < 3 && routeOptions.length < 3; attempt++) {
+        debugPrint('');
+        debugPrint('?? Attempt ${attempt + 1}: Finding route option...');
+        debugPrint('   Already used routes: ${usedRouteSlugs.isEmpty ? "none" : usedRouteSlugs.join(", ")}');
+        
+        final routeResult = await _buildSingleRouteOption(
+          start, 
+          dest, 
+          allSegments, 
+          googlePath, 
+          usedRouteSlugs,
+          attempt
+        );
+        
+        if (routeResult != null) {
+          routeOptions.add(routeResult);
+          
+          // Track which routes were used in this option
+          final usedInThisRoute = (routeResult.debugInfo['routes'] as List<dynamic>?)
+              ?.map((r) => r.toString())
+              .toSet() ?? {};
+          usedRouteSlugs.addAll(usedInThisRoute);
+          
+          debugPrint('? Route option ${attempt + 1} created using: ${usedInThisRoute.join(", ")}');
+        } else {
+          debugPrint('? Could not find route option ${attempt + 1}');
+          break; // Stop trying if we can't find more unique routes
+        }
+      }
+      
+      // If we have no routes, add the Google fallback
+      if (routeOptions.isEmpty) {
+        debugPrint('??  No custom routes found, using Google fallback');
+        routeOptions.add(RoutingResult(
+          polylines: [
+            Polyline(
+              polylineId: const PolylineId('google_fallback'),
+              points: googlePath,
+              color: Colors.grey,
+              width: 5,
+            )
+          ],
+          stitchedPath: googlePath,
+          googlePath: googlePath,
+          usedFallback: true,
+          debugInfo: {'case': 'fallback'},
+        ));
+      }
+      
+      debugPrint('');
+      debugPrint('? Total route options generated: ${routeOptions.length}');
+      
+      // Sort route options by total distance (shortest first)
+      routeOptions.sort((a, b) {
+        final distanceA = _calculateTotalDistance(a.stitchedPath);
+        final distanceB = _calculateTotalDistance(b.stitchedPath);
+        return distanceA.compareTo(distanceB);
+      });
+      
+      debugPrint('?? Routes sorted by distance (shortest first):');
+      for (int i = 0; i < routeOptions.length; i++) {
+        final distance = _calculateTotalDistance(routeOptions[i].stitchedPath);
+        debugPrint('   Route ${i + 1}: ${(distance / 1000).toStringAsFixed(2)} km');
+      }
+      
+      return routeOptions;
+      
+    } catch (e, st) {
+      debugPrint('? BUILD MULTIPLE ROUTES FAILED: $e');
+      debugPrint('   Stack: $st');
+      
+      // Return at least the Google route as fallback
+      final googlePath = await fetchGoogleDirections(start, dest);
+      return [
+        RoutingResult(
+          polylines: [
+            Polyline(
+              polylineId: const PolylineId('google_fallback'),
+              points: googlePath,
+              color: Colors.grey,
+              width: 5,
+            )
+          ],
+          stitchedPath: googlePath,
+          googlePath: googlePath,
+          usedFallback: true,
+          debugInfo: {'case': 'fallback', 'error': e.toString()},
+        )
+      ];
+    }
+  }
+
+  /// Helper method to build a single route option while excluding already used routes
+  static Future<RoutingResult?> _buildSingleRouteOption(
+    LatLng start,
+    LatLng dest,
+    List<RouteSegment> allSegments,
+    List<LatLng> googlePath,
+    Set<String> excludeRouteSlugs,
+    int attemptNumber,
+  ) async {
+    // Filter out already used routes
+    final availableSegments = allSegments
+        .where((s) => !excludeRouteSlugs.contains(s.slug))
+        .toList();
+    
+    if (availableSegments.isEmpty) {
+      debugPrint('   No available segments remaining');
+      return null;
+    }
+    
+    final debugInfo = <String, dynamic>{
+      'start': {'lat': start.latitude, 'lng': start.longitude},
+      'dest': {'lat': dest.latitude, 'lng': dest.longitude},
+      'attemptNumber': attemptNumber,
+    };
+    
+    const maxStartDistance = 1000.0; // 1km
+    const intersectionThreshold = 100.0; // 100m
+    
+    // CASE 1: Single route that reaches destination
+    final case1Candidates = availableSegments
+        .where((s) => s.distanceToStart <= maxStartDistance && s.reachesDestination)
+        .toList();
+    
+    if (case1Candidates.isNotEmpty) {
+      case1Candidates.sort((a, b) {
+        final startComparison = a.distanceToStart.compareTo(b.distanceToStart);
+        if (startComparison != 0) return startComparison;
+        return a.segmentLength.compareTo(b.segmentLength);
+      });
+      
+      final bestSegment = case1Candidates.first;
+      debugPrint('   Found single route: ${bestSegment.slug}');
+      
+      debugInfo['case'] = 'single_route';
+      debugInfo['routes'] = [bestSegment.slug];
+      
+      return await _buildSingleRouteResult(bestSegment, null, googlePath, debugInfo, start, dest);
+    }
+    
+    // CASE 2: Two routes with intersection
+    final startCandidates = availableSegments
+        .where((s) => s.distanceToStart <= maxStartDistance)
+        .toList();
+    
+    const maxEndDistance = 500.0;
+    final endCandidates = availableSegments
+        .where((s) => s.distanceToEnd <= maxEndDistance)
+        .toList();
+    
+    for (final startRoute in startCandidates) {
+      for (final endRoute in endCandidates) {
+        if (startRoute.slug == endRoute.slug) continue;
+        if (excludeRouteSlugs.contains(endRoute.slug)) continue;
+        
+        final intersection = findIntersectionPoint(
+          startRoute.trimmedPoints,
+          endRoute.trimmedPoints,
+          thresholdMeters: intersectionThreshold
+        );
+        
+        if (intersection != null) {
+          final intersectPoint = intersection['point'] as LatLng;
+          final route1Idx = intersection['route1Index'] as int;
+          final route2Idx = intersection['route2Index'] as int;
+          
+          debugPrint('   Found two-route connection: ${startRoute.slug} ? ${endRoute.slug}');
+          
+          final trimmedRoute1 = trimRouteToIndex(startRoute.trimmedPoints, route1Idx, intersectPoint);
+          final trimmedRoute2 = trimRouteFromIndex(endRoute.trimmedPoints, route2Idx, intersectPoint);
+          
+          debugInfo['case'] = 'two_route_connection';
+          debugInfo['routes'] = [startRoute.slug, endRoute.slug];
+          
+          return await _buildTwoRouteResult(
+            startRoute, endRoute, googlePath, debugInfo, start, dest,
+            trimmedRoute1: trimmedRoute1,
+            trimmedRoute2: trimmedRoute2,
+            intersects: true
+          );
+        }
+      }
+    }
+    
+    debugPrint('   No suitable route found for this option');
+    return null;
+  }
+
+  static Future<RoutingResult> _buildSingleRouteResult(
     RouteSegment segment,
     List<LatLng>? walkingPath,
     List<LatLng> googlePath,
     Map<String, dynamic> debugInfo,
-  ) {
+    LatLng userLocation,
+    LatLng destination,
+  ) async {
     final polylines = <Polyline>[];
+    
+    // Fetch walking directions from user to route start
+    final walkingToRoute = await fetchGoogleDirections(
+      userLocation, 
+      segment.trimmedPoints.first, 
+      mode: 'walking'
+    );
+    
+    // Add grey line from user to route start (using walking directions)
+    polylines.add(Polyline(
+      polylineId: const PolylineId('walking_to_route'),
+      points: walkingToRoute.isNotEmpty ? walkingToRoute : [userLocation, segment.trimmedPoints.first],
+      color: Colors.grey,
+      width: 4,
+      patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+    ));
     
     // Main route polyline
     polylines.add(Polyline(
@@ -1225,7 +1445,23 @@ class RoutingService {
       width: 5,
     ));
 
-    // Add walking path if provided
+    // Fetch walking directions from route end to destination
+    final walkingToDestination = await fetchGoogleDirections(
+      segment.trimmedPoints.last, 
+      destination, 
+      mode: 'walking'
+    );
+    
+    // Add grey line from route end to destination (using walking directions)
+    polylines.add(Polyline(
+      polylineId: const PolylineId('walking_to_destination'),
+      points: walkingToDestination.isNotEmpty ? walkingToDestination : [segment.trimmedPoints.last, destination],
+      color: Colors.grey,
+      width: 4,
+      patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+    ));
+
+    // Add walking path if provided (for intermediate walking)
     if (walkingPath != null && walkingPath.isNotEmpty) {
       polylines.add(Polyline(
         polylineId: const PolylineId('walking_path'),
@@ -1236,9 +1472,12 @@ class RoutingService {
       ));
     }
 
-    final stitchedPath = walkingPath != null && walkingPath.isNotEmpty
-        ? [...segment.trimmedPoints, ...walkingPath]
-        : segment.trimmedPoints;
+    final stitchedPath = [
+      ...walkingToRoute,
+      ...segment.trimmedPoints,
+      if (walkingPath != null && walkingPath.isNotEmpty) ...walkingPath,
+      ...walkingToDestination,
+    ];
 
     return RoutingResult(
       polylines: polylines,
@@ -1248,22 +1487,40 @@ class RoutingService {
     );
   }
 
-  static RoutingResult _buildTwoRouteResult(
+  static Future<RoutingResult> _buildTwoRouteResult(
     RouteSegment route1,
     RouteSegment route2,
     List<LatLng> googlePath,
-    Map<String, dynamic> debugInfo, {
+    Map<String, dynamic> debugInfo,
+    LatLng userLocation,
+    LatLng destination, {
     List<LatLng>? trimmedRoute1, // Custom trimmed route 1 (for intersections)
     List<LatLng>? trimmedRoute2, // Custom trimmed route 2 (for intersections)
     List<LatLng>? walkingPath, // Walking path between routes
     bool intersects = false,
     double? gap,
-  }) {
+  }) async {
     final polylines = <Polyline>[];
     
     // Use custom trimmed routes if provided, otherwise use default trimmed points
     final route1Points = trimmedRoute1 ?? route1.trimmedPoints;
     final route2Points = trimmedRoute2 ?? route2.trimmedPoints;
+    
+    // Fetch walking directions from user to first route start
+    final walkingToRoute = await fetchGoogleDirections(
+      userLocation, 
+      route1Points.first, 
+      mode: 'walking'
+    );
+    
+    // Add grey line from user to first route start (using walking directions)
+    polylines.add(Polyline(
+      polylineId: const PolylineId('walking_to_route'),
+      points: walkingToRoute.isNotEmpty ? walkingToRoute : [userLocation, route1Points.first],
+      color: Colors.grey,
+      width: 4,
+      patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+    ));
     
     // Add first route
     polylines.add(Polyline(
@@ -1291,12 +1548,30 @@ class RoutingService {
       color: _colorPool[1],
       width: 5,
     ));
+    
+    // Fetch walking directions from second route end to destination
+    final walkingToDestination = await fetchGoogleDirections(
+      route2Points.last, 
+      destination, 
+      mode: 'walking'
+    );
+    
+    // Add grey line from second route end to destination (using walking directions)
+    polylines.add(Polyline(
+      polylineId: const PolylineId('walking_to_destination'),
+      points: walkingToDestination.isNotEmpty ? walkingToDestination : [route2Points.last, destination],
+      color: Colors.grey,
+      width: 4,
+      patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+    ));
 
     // Build stitched path
     final stitchedPath = <LatLng>[
+      ...walkingToRoute,
       ...route1Points,
       if (walkingPath != null && walkingPath.isNotEmpty) ...walkingPath,
       ...route2Points,
+      ...walkingToDestination,
     ];
 
     return RoutingResult(
@@ -1307,22 +1582,46 @@ class RoutingService {
     );
   }
 
-  static RoutingResult _buildThreeRouteResult(
+  static Future<RoutingResult> _buildThreeRouteResult(
     RouteSegment route1,
     RouteSegment connector,
     RouteSegment route2,
     List<LatLng> googlePath,
-    Map<String, dynamic> debugInfo, {
+    Map<String, dynamic> debugInfo,
+    LatLng userLocation,
+    LatLng destination, {
     List<LatLng>? trimmedRoute1,
     List<LatLng>? trimmedConnector,
     List<LatLng>? trimmedRoute2,
-  }) {
+  }) async {
     // Use custom trimmed routes if provided, otherwise use default trimmed points
     final route1Points = trimmedRoute1 ?? route1.trimmedPoints;
     final connectorPoints = trimmedConnector ?? connector.trimmedPoints;
     final route2Points = trimmedRoute2 ?? route2.trimmedPoints;
     
+    // Fetch walking directions from user to first route start
+    final walkingToRoute = await fetchGoogleDirections(
+      userLocation, 
+      route1Points.first, 
+      mode: 'walking'
+    );
+    
+    // Fetch walking directions from last route end to destination
+    final walkingToDestination = await fetchGoogleDirections(
+      route2Points.last, 
+      destination, 
+      mode: 'walking'
+    );
+    
     final polylines = [
+      // Grey line from user to first route (using walking directions)
+      Polyline(
+        polylineId: const PolylineId('walking_to_route'),
+        points: walkingToRoute.isNotEmpty ? walkingToRoute : [userLocation, route1Points.first],
+        color: Colors.grey,
+        width: 4,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+      ),
       Polyline(
         polylineId: PolylineId('${route1.slug}-${route1.partIndex}'),
         points: route1Points,
@@ -1341,9 +1640,23 @@ class RoutingService {
         color: _colorPool[2],
         width: 5,
       ),
+      // Grey line from last route to destination (using walking directions)
+      Polyline(
+        polylineId: const PolylineId('walking_to_destination'),
+        points: walkingToDestination.isNotEmpty ? walkingToDestination : [route2Points.last, destination],
+        color: Colors.grey,
+        width: 4,
+        patterns: [PatternItem.dash(20), PatternItem.gap(10)],
+      ),
     ];
 
-    final stitchedPath = [...route1Points, ...connectorPoints, ...route2Points];
+    final stitchedPath = [
+      ...walkingToRoute,
+      ...route1Points,
+      ...connectorPoints,
+      ...route2Points,
+      ...walkingToDestination,
+    ];
 
     return RoutingResult(
       polylines: polylines,
@@ -1353,9 +1666,51 @@ class RoutingService {
     );
   }
 
-  static void clearCache() {
-    debugPrint('🗑️  Clearing route cache');
-    _routeCache.clear();
-    _routeIndexCache = null;
+  // Preload all routes into cache for faster routing
+  static Future<void> preloadAllRoutes() async {
+    debugPrint('🚀 PRELOADING ALL ROUTES');
+    debugPrint('═══════════════════════════════════════════');
+    
+    try {
+      // First, fetch the route index
+      final routes = await fetchRouteIndex();
+      debugPrint('📋 Found ${routes.length} routes to preload');
+      
+      if (routes.isEmpty) {
+        debugPrint('⚠️  No routes to preload');
+        return;
+      }
+      
+      // Load all routes in parallel for speed
+      final futures = routes.map((slug) => loadRouteLines(slug)).toList();
+      final results = await Future.wait(futures);
+      
+      int successCount = 0;
+      List<String> failedRoutes = [];
+      
+      for (int i = 0; i < results.length; i++) {
+        if (results[i].isNotEmpty) {
+          successCount++;
+        } else {
+          failedRoutes.add(routes[i]);
+        }
+      }
+      
+      debugPrint('✅ Preloaded $successCount/${routes.length} routes successfully');
+      debugPrint('📦 Cache size: ${_routeCache.length} routes');
+      
+      // Only display failed routes if there are any
+      if (failedRoutes.isNotEmpty) {
+        debugPrint('❌ Failed to load ${failedRoutes.length} route(s):');
+        for (final route in failedRoutes) {
+          debugPrint('   - $route');
+        }
+      }
+      
+      debugPrint('═══════════════════════════════════════════');
+    } catch (e, st) {
+      debugPrint('❌ Error preloading routes: $e');
+      debugPrint('   Stack trace: $st');
+    }
   }
 }

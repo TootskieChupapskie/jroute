@@ -47,7 +47,7 @@ class _ConductorPageState extends State<ConductorPage> {
     "LASANG VIA BUHANGIN",
     "LASANG VIA SASA",
     "MAA AGDAO",
-    "MAA BANKEROAHAN",
+    "MAA BANKEROHAN",
     "MAGTUOD",
     "MATINA",
     "MATINA APLAYA",
