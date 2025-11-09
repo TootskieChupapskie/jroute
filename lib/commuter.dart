@@ -7,6 +7,7 @@ import 'components/recenter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/conductor_map_render.dart';
 import 'services/routing_service.dart';
+import 'login.dart'; // add this import near the top
 
 class CommuterPage extends StatefulWidget {
   const CommuterPage({Key? key}) : super(key: key);
@@ -130,7 +131,14 @@ class _CommuterPageState extends State<CommuterPage> {
           ),
 
           // Top-left logout button
-          LogoutButton(onPressed: () => Navigator.of(context).maybePop()),
+          LogoutButton(
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
+              );
+            },
+          ),
           // Search field placed to the right of the logout button (top:50, left:90)
           SearchField(
             top: 50,

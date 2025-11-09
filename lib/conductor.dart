@@ -6,6 +6,7 @@ import 'components/passenger.dart';
 import 'components/recenter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'services/conductor_map_render.dart';
+import 'login.dart'; // add this import near the top
 
 class ConductorPage extends StatefulWidget {
   const ConductorPage({Key? key}) : super(key: key);
@@ -347,9 +348,14 @@ class _ConductorPageState extends State<ConductorPage> {
               maxPassengers: _maxPassengers,
               onClose: () => setState(() => _isPassengerView = false),
             ),
-          // Top-left logout button (top-most layer)
+          // Top-left logout button (replace existing maybePop)
           LogoutButton(
-            onPressed: () => Navigator.of(context).maybePop(),
+            onPressed: () {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (_) => const LoginPage()),
+                (route) => false,
+              );
+            },
           ),
           // Recenter button positioned above the modal/passenger area at top-right
           Builder(builder: (ctx) {
