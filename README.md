@@ -7,10 +7,6 @@ J-Route is a jeepney routing service based in Davao City that promotes cultural 
 - Conductor page: input the route you are driving and the maximum passengers you can carry.
 - Commuter page: detects the nearest route from your location and pairs it with up to three nearby routes that get you to your destination. Duplicate routes are removed.
 
-## Development
-- Project path: d:\Code\j_route\jroute
-- Flutter + Google Maps + Geolocator + Lottie used in app.
-
 ## Project history
 - Initial prototype was developed using .NET MAUI.
 - Due to limitations encountered with MAUI (ecosystem and compatibility with Supabase and Google APIs), the project was migrated to Flutter to better support Supabase integration and Google Maps/Places APIs, and to accelerate cross-platform development.
