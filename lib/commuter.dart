@@ -8,6 +8,7 @@ import 'package:geolocator/geolocator.dart';
 import 'services/conductor_map_render.dart';
 import 'services/routing_service.dart';
 import 'login.dart'; // add this import near the top
+import 'package:lottie/lottie.dart' as lottie;
 
 class CommuterPage extends StatefulWidget {
   const CommuterPage({Key? key}) : super(key: key);
@@ -60,6 +61,30 @@ class _CommuterPageState extends State<CommuterPage> {
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
+    _goToCurrentLocation(); // trigger recenter on load
+  }
+
+  Future<void> _goToCurrentLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final target = LatLng(pos.latitude, pos.longitude);
+      setState(() => _myLocationEnabled = true);
+      await _mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: 15)),
+      );
+    } catch (e) {
+      debugPrint('Could not get current location: $e');
+    }
   }
 
   /// Calculate distance of a polyline in kilometers
@@ -264,28 +289,32 @@ class _CommuterPageState extends State<CommuterPage> {
           // routing overlay
           if (_isRouting)
             Positioned.fill(
-              child: Container(
-                color: Colors.black26,
-                child: Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 80,
-                          height: 80,
-                          child: Image.network('https://media.giphy.com/media/3o7TKtnuHOHHUjR38Y/giphy.gif', fit: BoxFit.contain),
+                    child: Container(
+                      color: Colors.black26,
+                      child: Center(
+                        child: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 120,
+                                height: 100,
+                                child: lottie.Lottie.asset(
+                                  'assets/Red Car.json',
+                                  fit: BoxFit.contain,
+                                  repeat: true,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              const Text('Finding route...', style: TextStyle(fontWeight: FontWeight.w600)),
+                            ],
+                          ),
                         ),
-                        const SizedBox(height: 8),
-                        const Text('Finding route...', style: TextStyle(fontWeight: FontWeight.w600)),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
-            ),
 
           // Distance modal - shows route info and fare
           if (_routeInfoList.isNotEmpty)

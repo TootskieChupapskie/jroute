@@ -94,14 +94,21 @@ class _DistanceModalState extends State<DistanceModal> {
     return standardFare * 0.80; // 80% of standard fare (20% discount)
   }
 
-  // Format route name: convert to proper camel case and replace - with space
+  // Format route name: replace separators with space and title-case all words
   String _formatRouteName(String routeName) {
-    // Split by hyphen and convert each word to title case
-    return routeName
-        .split('-')
-        .map((word) => word.isEmpty 
-            ? '' 
-            : word[0].toUpperCase() + word.substring(1).toLowerCase())
+    if (routeName.trim().isEmpty) return routeName;
+    // Normalize separators to single space
+    String cleaned = routeName
+        .replaceAll(RegExp(r'[_/]+'), ' ')
+        .replaceAll(RegExp(r'\s*[-–—]+\s*'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
+        .trim();
+
+    // Convert to lower then title-case each word (handles ALL CAPS input)
+    cleaned = cleaned.toLowerCase();
+    final words = cleaned.split(' ');
+    return words
+        .map((w) => w.isEmpty ? w : (w.length == 1 ? w.toUpperCase() : (w[0].toUpperCase() + w.substring(1))))
         .join(' ');
   }
 
@@ -433,6 +440,9 @@ class _DistanceModalState extends State<DistanceModal> {
                         color: routeColor,
                       ),
                       textAlign: TextAlign.center,
+                      maxLines: 2, // allow up to two lines for multi-word names
+                      overflow: TextOverflow.ellipsis,
+                      softWrap: true,
                     ),
                     const SizedBox(height: 12),
                     

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'components/bottom_modal.dart';
 import 'components/logout_button.dart';
 import 'components/passenger.dart';
 import 'components/recenter.dart';
-import 'package:geolocator/geolocator.dart';
 import 'services/conductor_map_render.dart';
 import 'login.dart'; // add this import near the top
 
@@ -22,10 +22,12 @@ class _ConductorPageState extends State<ConductorPage> {
   final FocusNode _routeFocusNode = FocusNode();
   final FocusNode _passengersFocusNode = FocusNode();
 
-  bool _isExpanded = false;
+  // start expanded on load
+  bool _isExpanded = true;
   String _autocompleteSuggestion = '';
   bool _isLoadingRoute = false;
   bool _isPassengerView = false;
+  bool _sakayPressed = false; // Track if Sakay button was pressed
   int _maxPassengers = 0;
   bool _myLocationEnabled = false;
 
@@ -89,8 +91,8 @@ class _ConductorPageState extends State<ConductorPage> {
   Set<Marker> _markers = {};
 
   static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(7.1907, 125.4553), // Davao City
-    zoom: 12.0,
+    target: LatLng(7.1907, 125.4553), // Davao fallback
+    zoom: 12,
   );
 
   @override
@@ -139,6 +141,31 @@ class _ConductorPageState extends State<ConductorPage> {
 
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
+    _goToCurrentLocation();
+    _recenterToUser();
+  }
+
+  Future<void> _goToCurrentLocation() async {
+    try {
+      final serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) return;
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) return;
+      }
+      if (permission == LocationPermission.deniedForever) return;
+
+      final pos = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.high);
+      final target = LatLng(pos.latitude, pos.longitude);
+      setState(() => _myLocationEnabled = true);
+      await _mapController?.animateCamera(
+        CameraUpdate.newCameraPosition(CameraPosition(target: target, zoom: 15)),
+      );
+    } catch (e) {
+      debugPrint('Could not get current location: $e');
+    }
   }
 
   void _onRouteTextChanged() {
