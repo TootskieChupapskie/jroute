@@ -100,11 +100,16 @@ class _CommuterPageState extends State<CommuterPage> {
   /// Extract route name from polyline ID and convert to display format
   /// Converts "bago-aplaya" to "Bago Aplaya" (camel case with spaces)
   String _extractRouteName(String polylineId) {
-    // polylineId format is usually "slug-partIndex" or "slug_partIndex"
+    // polylineId format is usually "route-name-partIndex" (e.g., "jade-valley-0")
     final parts = polylineId.split(RegExp(r'[-_]'));
-    final slug = parts.isNotEmpty ? parts[0] : polylineId;
     
-    // Split by hyphens and capitalize each word
+    // Remove the last part if it's a number (the index)
+    if (parts.isNotEmpty && int.tryParse(parts.last) != null) {
+      parts.removeLast();
+    }
+    
+    // Join all remaining parts and capitalize each word
+    final slug = parts.join('-');
     final words = slug.split('-');
     final capitalizedWords = words.map((word) {
       if (word.isEmpty) return word;
@@ -168,6 +173,14 @@ class _CommuterPageState extends State<CommuterPage> {
           SearchField(
             top: 50,
             left: 80,
+              onFocusChanged: () {
+            // Collapse modal when search field gains/loses focus
+            if (_routeInfoList.isNotEmpty) {
+                setState(() {
+                  _isModalExpanded = false;
+                });
+              }
+            },
             onPlaceSelected: (loc, desc) async {
               // Try to get device location as start point
               setState(() {

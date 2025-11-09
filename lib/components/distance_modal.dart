@@ -94,18 +94,36 @@ class _DistanceModalState extends State<DistanceModal> {
     return standardFare * 0.80; // 80% of standard fare (20% discount)
   }
 
-  // Format route name: replace separators with space and title-case all words
+  // Debug function for route names
+  void _debugRouteName(RouteInfo route) {
+    print('=== ROUTE DEBUG START ===');
+    print('Raw route name: "${route.name}"');
+    print('Route name length: ${route.name.length}');
+    print('Route name isEmpty: ${route.name.isEmpty}');
+    print('Route name characters: ${route.name.split('').join(', ')}');
+    print('Route kilometers: ${route.kilometers}');
+    print('Route color: ${route.color}');
+    
+    // Check for hidden characters
+    if (route.name.contains('\n')) print('⚠️ Contains newline');
+    if (route.name.contains('\t')) print('⚠️ Contains tab');
+    if (route.name.contains('\r')) print('⚠️ Contains carriage return');
+    
+    // Show formatted version
+    final formatted = _formatRouteName(route.name);
+    print('Formatted route name: "$formatted"');
+    print('Formatted length: ${formatted.length}');
+    print('=== ROUTE DEBUG END ===\n');
+  }
+
+  // Format route name: keep full route names intact, just fix capitalization
   String _formatRouteName(String routeName) {
     if (routeName.trim().isEmpty) return routeName;
-    // Normalize separators to single space
-    String cleaned = routeName
-        .replaceAll(RegExp(r'[_/]+'), ' ')
-        .replaceAll(RegExp(r'\s*[-–—]+\s*'), ' ')
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .trim();
-
-    // Convert to lower then title-case each word (handles ALL CAPS input)
-    cleaned = cleaned.toLowerCase();
+    
+    // Convert to lowercase first
+    String cleaned = routeName.toLowerCase().trim();
+    
+    // Title-case each word
     final words = cleaned.split(' ');
     return words
         .map((w) => w.isEmpty ? w : (w.length == 1 ? w.toUpperCase() : (w[0].toUpperCase() + w.substring(1))))
@@ -420,6 +438,10 @@ class _DistanceModalState extends State<DistanceModal> {
             },
             itemBuilder: (context, index) {
               final route = jeepneyRoutes[index];
+              
+              // Debug the route
+              _debugRouteName(route);
+              
               final routeName = _formatRouteName(route.name);
               final routeColor = route.color ?? const Color(0xFFF7B731); // Use route color or default yellow
               final distance = route.kilometers;

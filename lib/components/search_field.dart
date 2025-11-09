@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
@@ -15,15 +14,16 @@ class SearchField extends StatefulWidget {
   final double top;
   final double left;
   final PlaceSelectedCallback? onPlaceSelected;
+  final VoidCallback? onFocusChanged; // Callback when focus changes
 
-  const SearchField({Key? key, this.top = 50, this.left = 90, this.onPlaceSelected}) : super(key: key);
+  const SearchField({Key? key, this.top = 50, this.left = 90, this.onPlaceSelected, this.onFocusChanged}) : super(key: key);
 
   @override
   State<SearchField> createState() => _SearchFieldState();
 }
 
 class _SearchFieldState extends State<SearchField> {
-  final TextEditingController _ctrl = TextEditingController();
+  late final TextEditingController _ctrl;
   final FocusNode _focus = FocusNode();
   Timer? _debounce;
   List<Map<String, dynamic>> _predictions = [];
@@ -31,8 +31,8 @@ class _SearchFieldState extends State<SearchField> {
   bool _isFocused = false;
 
   // sizing
-  final double _baseHeight = 52.0;
-  final double _itemHeight = 48.0;
+  final double _baseHeight = 55.0;
+  final double _itemHeight = 50.0;
   final double _maxMultiplier = 5.0; // max height = base * multiplier
 
   String get _apiKey => dotenv.env['GOOGLE_MAPS_API_KEY'] ?? '';
@@ -40,11 +40,16 @@ class _SearchFieldState extends State<SearchField> {
   @override
   void initState() {
     super.initState();
+    _ctrl = TextEditingController();
     _focus.addListener(() {
       setState(() {
         _isFocused = _focus.hasFocus;
         if (!_isFocused) _predictions = [];
       });
+      // Notify parent about focus change
+      if (widget.onFocusChanged != null) {
+        widget.onFocusChanged!();
+      }
     });
   }
 
@@ -136,11 +141,12 @@ class _SearchFieldState extends State<SearchField> {
 
   @override
   Widget build(BuildContext context) {
-  final maxHeight = _baseHeight * _maxMultiplier;
+    final maxHeight = _baseHeight * _maxMultiplier;
 
     double desiredHeight = _baseHeight;
-    if (_isFocused && _predictions.isEmpty) {
-      desiredHeight = _baseHeight * 1.0;
+    if (_isFocused && _predictions.isEmpty && !_loading && _ctrl.text.isNotEmpty) {
+      // Add extra height for "No results" message
+      desiredHeight = _baseHeight + 30;
     } else if (_predictions.isNotEmpty) {
       final suggestionsHeight = math.min((_predictions.length * _itemHeight), maxHeight - _baseHeight);
       desiredHeight = _baseHeight + suggestionsHeight;
@@ -149,7 +155,7 @@ class _SearchFieldState extends State<SearchField> {
     // When focused, expand width and shift left so the box moves toward center
     final screenW = MediaQuery.of(context).size.width;
     final baseWidth = screenW - widget.left - 50;
-    // expanded width: either 1.4x base or nearly full width leaving small margins
+    // expanded width: either 1.2x base or nearly full width leaving small margins
     final expandedWidth = math.min(screenW - 30, baseWidth * 1.2);
     final currentWidth = _isFocused ? expandedWidth : baseWidth;
     final currentLeft = _isFocused ? (screenW - currentWidth) / 2 : widget.left;
@@ -162,7 +168,7 @@ class _SearchFieldState extends State<SearchField> {
       duration: const Duration(milliseconds: 220),
       curve: Curves.easeInOut,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
@@ -188,7 +194,7 @@ class _SearchFieldState extends State<SearchField> {
                         hintText: 'Saan po tayo?',
                         border: InputBorder.none,
                         isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 8),
+                        contentPadding: EdgeInsets.symmetric(vertical: 7),
                       ),
                     ),
                   ),
@@ -258,4 +264,3 @@ class _SearchFieldState extends State<SearchField> {
     );
   }
 }
-
