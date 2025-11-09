@@ -36,6 +36,12 @@ J-Route is a jeepney routing service based in Davao City that promotes cultural 
 - Support multiple vehicle types (jeepney, tricycle, bus) and their stops/stations.
 - Improve routing algorithm to prefer rideability (even if less efficient) before falling back.
 - Improve UI/UX and add iOS testing.
+- Implement IoT-based real-time tracking:
+  - Equip participating jeepneys (conductors) with lightweight location beacons or a driver app that broadcasts position/heading.
+  - On the Commuter side, show nearby jeepneys within a configurable radius (default 5 km) filtered by whether a jeepney is servicing the commuter's chosen route.
+  - Use route-membership checks (jeepney's active route tags) and distance filtering server-side to limit broadcasts and reduce client load.
+  - Consider privacy, battery/network usage, and secure auth for IoT/device telemetry.
+  - This enables live visibility of available jeepneys, ETA estimates, and better pairing between commuters and conductors.
 
 ## Development
 - Project path: d:\Code\j_route\jroute
