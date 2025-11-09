@@ -15,7 +15,7 @@ J-Route is a jeepney routing service based in Davao City that promotes cultural 
 - Conductor and commuter pages.
 - Nearest-route detection and pairing (up to 3 routes).
 - Built-in list of 52 jeepney routes.
-- Basic UI for route selection, fare estimation, and sakay flow.
+- Basic UI for route selection, fare and distance estimation.
 
 ## Current limitations
 - UI needs optimization.
