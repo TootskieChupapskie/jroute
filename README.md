@@ -29,6 +29,8 @@ J-Route is a jeepney routing service based in Davao City that promotes cultural 
 - Route switching mid-trip may not respect actual direction/lanes.
 - Fallbacks can trigger prematurely (falls back instead of trying less-efficient routes).
 - Some route data may be outdated.
+- The list of 52 routes was created manually and therefore lacks fluidity and geometric precision; many route geometries are approximated.
+- Rendering/nearest-match logic currently prioritizes the nearest segment instead of the nearest vertex, which can produce incorrect nearest-route matches on complex or closely spaced geometries.
 
 ## Future recommendations
 - Integrate GeoJSON route files and use QGIS for better mapping and spatial analysis.
