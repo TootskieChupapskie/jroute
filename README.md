@@ -45,7 +45,8 @@ J-Route is a jeepney routing service based in Davao City that promotes cultural 
   - Consider privacy, battery/network usage, and secure auth for IoT/device telemetry.
   - This enables live visibility of available jeepneys, ETA estimates, and better pairing between commuters and conductors.
 
-## Development
-- Project path: d:\Code\j_route\jroute
-- Flutter + Google Maps + Geolocator + Lottie used in app.
+## Stack Development
+- Frontend & backend: Dart (Flutter for UI, shared Dart code for services)
+- Database: Supabase
+- APIs: Google Maps API (mapping, geocoding, and autocomplete)
 
