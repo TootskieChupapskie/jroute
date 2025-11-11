@@ -46,3 +46,5 @@ J-Route is a jeepney routing service based in Davao City that promotes cultural 
 - Database: Supabase
 - APIs: Google Maps API (mapping, geocoding, and autocomplete)
 
+Unable to access the PDF Manuscript? Open the Google Docs version instead.
+https://docs.google.com/document/d/1zI_2u9qN8BUYxFblGNn2ew7cWyGqYoUp/edit?usp=sharing&ouid=109518672732698240377&rtpof=true&sd=true
